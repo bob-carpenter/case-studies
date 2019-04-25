@@ -1,0 +1,1164 @@
+---
+title: "For Probabilistic Prediction, Full Bayes is Better than Point
+Estimators"
+author: "Bob Carpenter"
+date: "April 2019"
+output:
+  tufte::tufte_html:
+    toc: true
+    toc_depth: 1
+---
+
+```{r echo = FALSE, warning = FALSE, message = FALSE}
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(magrittr)
+knitr::opts_chunk$set(
+  include = TRUE,
+  cache = TRUE,
+  collapse = TRUE,
+  echo = FALSE,
+  message = FALSE,
+  tidy = FALSE,
+  warning = FALSE,
+  comment = "  ",
+  dev = "png",
+  dev.args = list(bg = '#FFFFF8'),
+  dpi = 300,
+  fig.align = "center",
+  fig.width = 7,
+  fig.asp = 0.618,
+  fig.show = "hold",
+  out.width = "90%"
+)
+library(MASS)
+library(rstan)
+  rstan_options(auto_write = FALSE)
+  options(mc.cores = 4)
+library(tufte)
+
+
+# UTILITY FUNCTIONS
+
+printf <- function(pattern, ...) {
+  cat(sprintf(pattern, ...))
+}
+
+print_file <- function(file) {
+  cat(paste(readLines(file), "\n", sep=""), sep="")
+}
+
+extract_one_draw <- function(stanfit, chain = 1, iter = 1) {
+  x <- get_inits(stanfit, iter = iter)
+  x[[chain]]
+}
+
+# TUFTE GGPLOT STYLE
+
+ggtheme_tufte <- function() {
+  theme(plot.background =
+          element_rect(fill = "#fffff8",
+                       colour = "#fffff8",
+                       size = 0.5,
+                       linetype = "solid"),
+        plot.margin=unit(c(1, 1, 0.5, 0.5), "lines"),
+        panel.background =
+          element_rect(fill = "#fffff8",
+                       colour = "#fffff8",
+                       size = 0.5,
+                       linetype = "solid"),
+        panel.grid.major = element_line(colour = "white",
+                                        size = 1, linetype="dashed"),
+        panel.grid.minor = element_blank(),
+        legend.box.background =
+          element_rect(fill = "#fffff8",
+                       colour = "#fffff8",
+                       linetype = "solid"),
+        axis.ticks = element_blank(),
+        axis.text = element_text(family = "Palatino", size = 14),
+        axis.title.x = element_text(family = "Palatino", size = 16,
+                                    margin = margin(t = 15,
+                                                    r = 0, b = 0, l = 0)),
+        axis.title.y = element_text(family = "Palatino", size = 16,
+                                    margin = margin(t = 0,
+                                                    r = 15, b = 0, l = 0)),
+        strip.background = element_rect(fill = "#fffff8",
+                                        colour = "#fffff8",
+                                        linetype = "solid"),
+        strip.text = element_text(family = "Palatino", size = 14),
+        legend.text = element_text(family = "Palatino", size = 14),
+        legend.title = element_text(family = "Palatino", size = 16,
+                                    margin = margin(b = 5)),
+        legend.background = element_rect(fill = "#fffff8",
+                                        colour = "#fffff8",
+                                        linetype = "solid"),
+        legend.key = element_rect(fill = "#fffff8",
+                                        colour = "#fffff8",
+                                        linetype = "solid")
+  )
+}
+
+# GENERAL R CONFIGURATION
+
+options(digits = 2)
+options(htmltools.dir.version = FALSE)
+
+set.seed(1234)  # reproduces with other seed, just tired of it dancing
+```
+
+## Abstract {-}
+
+A probabilistic prediction takes the form of a distribution over possible outcomes.  With proper scoring rules such as log loss or square error, it is possible to evaluate such a probabilistic prediction against a true outcome.  This short note provides simulation-based evaluation of full Bayesian inference, where we average over our estimation uncertianty, and two forms of point estimation, one that uses the posterior mode (max a posteriori) and one that uses the posterior mean (as is typical with variational inference).  The example we consider is a simple Bayesian logistic regression with potentially correlated predictors and weakly informative priors.  To make a long story short, full Bayes has lower expected log loss and squared error than either of the point estimators.
+
+
+# Logistic Regression
+
+## Observed data
+
+The data consists of binary observations $y_n \in \{ 0, 1 \}$ paired
+with $K$-dimensional vectors of predictors^[Predictors are also called
+covariates or features.] $x_n$ for $n \in 1:N$. That is, $x \in
+\mathbb{R}^{N \times K}$ is the complete data matrix and $x_n$ is its
+$n$-th row. We will assume the columns of $x$ are standardized,^[To
+standardize an unstandardized variable $x = x_1, \ldots, x_N,$ set
+$$\mbox{z}(x) = \frac{x - \mbox{mean}(x)}{\mbox{sd}(x)}.$$ A
+standardized value $z(x)$ of 1 corresponds to an original value $x$
+that is one standard deviation above the mean; a value of -2.5
+corresponds to a value two and a half standard deviations below the
+mean.] so that for every column $k$ corresponding to a predictor, we
+have
+$$
+\mbox{mean}(x_{1:N, \ k}) = 0
+$$
+and
+$$ \mbox{sd}(x_{1:N, \ k}) = 1.
+$$
+
+
+## Data distribution
+
+For the purposes of simulation, we will assume the data have a
+multivariate normal distribution with a positive-definite covariance
+matrix $\Sigma$,
+$$
+x_n \sim \mbox{multinormal}(0, \Sigma).
+$$
+We will assume the covariance matrix $\Sigma$ has a unit diagonal so
+that each $x_{n, \ k}$ has a standard normal marginal distribution.^[In
+symbols, if $\mu = 0$ and $\mbox{diag}(\Sigma) = 1,$ then $y \sim
+\mbox{multinormal}(\mu, \Sigma)$ implies that marginally, each $y_k
+\sim \mbox{normal}(0, 1).$]
+
+## Sampling distribution
+
+The model is parameterized with an intercept $\alpha \in \mathbb{R}$
+and coefficient vector $\beta \in \mathbb{R}^K$. Logistic regression
+is a generalized linear model where the linear predictor
+
+$$
+\alpha + x_n \, \beta
+\ = \
+\alpha + \sum_{k=1}^K x_{n, k} \cdot \beta_k,
+$$
+represents the log odds of $y_n$ being equal to one.^[The function
+$\mbox{logit}:(0, 1) \rightarrow (-\infty, \infty)$
+maps a probability $v \in [0, 1]$ to its log odds,
+$$\mbox{logit}(v) = \log \frac{v}{1 - v}.$$]
+
+Given the log odds, the probability that $y_n$ is one is given by
+inverting the log odds function,^[The inverse logit function
+$\mbox{logit}^{-1}:(-\infty, \infty) \rightarrow (0, 1)$ maps a log
+odds value $u \in (-\infty, \infty)$ to its corresponding probability,
+$$\mbox{logit}^{-1}(u) = \frac{1}{1 + \exp(-u)}. The inverse logit
+function is also known as the (logistic) sigmoid function.$$]
+$$
+\mbox{Pr}[y_n = 1] = \mbox{logit}^{-1}(\alpha + x_n \, \beta).
+$$
+The sampling distribution is then defined to follow the log odds,
+$$
+y_n \sim \mbox{bernoulli}(\mbox{logit}^{-1}(\alpha + x_n \, \beta)),
+$$
+for observations indexed by $n \in 1:N$. It is important to note that
+the $y_n$ are defined by sampling according to the log odds.^[Because
+it is used as a decision process to choose a response, a common
+simulation mistake is to treat the log odds as a deterministic
+threshold and define $$y_n = \begin{cases}1 & \mbox{if} \
+\mbox{logit}^{-1}(\alpha + x_n \, \beta) > \frac{1}{2} \\[2pt] 0 &
+\mbox{otherwise}.\end{cases}$$  Such an approach typically leads to
+separable data leading to infinite maximum likelihood coefficients.
+As some indication of how common this mistake is in simulating
+logistic regression data, it
+comes up several times in the first page of hits for the Google query (simulate data
+with logistic regression), e.g.,
+[(1)](https://stats.stackexchange.com/questions/282804/is-it-possible-to-simulate-logistic-regression-without-randomness)
+[(2)](https://stats.stackexchange.com/questions/46523/how-to-simulate-artificial-data-for-logistic-regression/46525),
+[(3)](https://www.statalist.org/forums/forum/general-stata-discussion/general/1475130-simulating-data-for-logistic-regression-with-categorical-variables?p=1475211#post1475211).]
+
+
+## Prior distribution
+
+Given the logistic scale and standardized predictors, we assume weakly
+informative priors,^[Weakly informative priors provide the scale of a
+parameter; for logistic regression, log odds outside of the -5 to 5
+range have very low or very high probabilities.   For example,
+$$\mbox{logit}^{-1}(6) \approx 0.9975.$$  So we keep the coefficients
+in the -3 to 3 range to match the predictors in the same range so that
+their products tend to not be too extreme on the log odds scale.]
+$$
+\alpha, \beta_k \sim \mbox{normal}(0, 2),
+$$
+for $k \in 1:K$.
+
+
+## Predictive distribution
+
+Suppose we also have some observed test predictors $\tilde{x}_n$ for
+$n \in 1:\tilde{N}$, but we do not know the corresponding outcomes,
+$\tilde{y}_n$. These outcomes need to be predicted based on the
+predictors $\tilde{x}_n$ and the knowledge of the values of the
+regression coefficients, $\alpha$ and $\beta$. Although not strictly
+necessary, we will assume for the sake of simulation that
+$\tilde{x}_n$ has the same distribution as the training predictors
+$x$.^[If the conditions are not matched, poststratification can be
+used to make collective predictions, such as estimating accuracy, on
+mismatched data sets.]
+
+If we knew the parameter values $(\alpha, \beta)$, we
+would know that the distribution of $\tilde{y}_n$ is just the sampling
+distribution,
+$$
+\tilde{y}_n \sim
+\mbox{bernoulli}(\mbox{logit}^{-1}(\alpha + \tilde{x}_n \, \beta)).
+$$
+
+
+# Inference
+
+In general, we do not know the regression coefficients $\alpha$ and
+$\beta$;  we only observe data $(x, y)$ that lets us infer their
+values with some uncertainty.  Similarly, we do not know the outcomes
+$\tilde{y}_n$ we wish to predict based on their predictors
+$\tilde{x}_n$ and the previously observed data $(x, y).$
+
+
+## Bayesian inference
+
+Full Bayesian inference averages^[For continuous quantities,
+averages of functions $f(u)$ weighted by a probability function $p(u)$
+for a random variable $U$ are given by expectations $$\mathbb{E}[f(U)]
+\ = \ \int_U f(u) \cdot p(u) \, \mbox{d}u.$$]  over
+the uncertainty in our parameters given the data.  Symbolically, this
+can be expressed in terms of a posterior distribution,
+as given by Bayes's rule,
+$$
+\begin{array}{rcl}
+p(\alpha, \beta \mid x, y)
+& = &
+\frac{\displaystyle p(y \mid \alpha, \beta, x) \cdot p(\alpha, \beta)}
+     {\displaystyle p(y)}
+\\[4pt]
+& \propto &
+p(y \mid \alpha, \beta, x) \cdot p(\alpha, \beta).
+\end{array}
+$$
+with terms for the sampling distribution $p(y \mid \alpha, \beta, x)$
+and prior $p(\alpha, \beta).$
+
+What we really want is inference for $\tilde{y}$, the unobserved
+outcomes. These are defined by taking a weighted average of
+predictions $p(\tilde{y} \mid \tilde{x}, \alpha, \beta)$, where the weights are determined by the posterior
+density $p(\alpha, \beta \mid x, y)$,
+$$
+p(\tilde{y} \mid \tilde{x}, x, y)
+\ = \
+\int_{\mathbb{R}} \int_{\mathbb{R}^K}
+\,
+p(\tilde{y} \mid \tilde{x}, \alpha, \beta)
+\cdot
+p(\alpha, \beta \mid x, y)
+\,
+\mathrm{d} \beta
+\,
+\mathrm{d} \alpha.
+$$
+
+Given posterior draws $\left( \alpha^{(m)}, \beta^{(m)} \right)$,^[These may be
+(anti-)correlated, as in the draws produced by Markov chain Monte
+Carlo.] the posterior predictive distribution may be calculated by
+plugging in draws and averaging,
+$$
+p(\tilde{y} \mid \tilde{x}, x, y)
+\ \approx \
+\frac{1}{M} \sum_{m = 1}^M p(\tilde{y} \mid \tilde{x}, \alpha^{(m)}, \beta^{(m)}).
+$$
+Expected error in the estimate decreases as $\mathcal{O}(1 /
+\sqrt{M}).$^[Technically, the denominator the square root of the
+effective sample size, but this is linearly related to $M$, so the
+result holds as stated up to an order.]
+
+
+
+## Max a posterior approximate inference
+
+The maximum a posteriori (MAP) estimator for parameters $(\alpha,
+\beta)$ is given by
+$$
+\alpha^*, \beta^*
+\ = \
+\mbox{arg max}_{\alpha, \ \beta}
+\
+p(\alpha, \beta \mid x, y).
+$$
+
+It is common in machine learning applications to simply plug-in
+$(\alpha^*, \beta^*)$ for inference, using the approximation
+$$
+p(\tilde{y} \mid \tilde{x}, x, y)
+\ \approx \
+p(\tilde{y} \mid \tilde{x}, \alpha^*, \beta^*).
+$$
+
+The approximation arises because the values $\alpha^*, \beta^*$ are
+being treated as certain when the data $(x, y)$ provide only limited
+information about their values.
+
+
+## Variational approximation inference
+
+Variational Bayes (VB) attempts to find an approximate distribution
+matching the posterior. In machine learning settings, the goal is
+typically to extract point estimates corresponding to the approximate
+posterior mean values.^[It's possible to extract posterior simulation
+draws given the full variational approximation, but that is almost
+never done other than in Stan. Typically, variational approximations
+are mean field (diagonal covariance), and so the posterior
+approximation is poor when parameters are correlated, as in typical
+logistic regression applications to language, vision, survey questions,
+or other correlated system of predictors. It is typical instead to
+just plug in the approximate posterior means found by variational
+inference.] If the VB approximation were perfect, the optimizer will
+find the true posterior means.^[This doesn't matter if it uses a
+mean-field approximation or not; best case, it recovers the true
+posterior means.] For the purposes of simulation, we are going to
+suppose we have a good enough variational approximation to find the
+true posterior means.^[This is very unlikely in practice given the
+nature of the variational approximations, but given the
+variety of variational approximations possible and algorithms to fit
+them, this seemed like a good compromise for evaluation.]
+
+We can define the posterior means directly as conditional posterior
+expectations,
+$$
+\begin{array}{rcl}
+\widehat{\alpha}, \widehat{\beta}
+& = & \mathbb{E}[\alpha, \beta \mid x, y]
+\\[8pt]
+& = & \int_{\mathbb{R}} \int_{\mathbb{R}^K} (\alpha, \beta) \cdot
+p(\alpha, \beta \mid x, y) \, \mathrm{d} \beta \, \mathrm{d} \alpha.
+\end{array}
+$$
+We can calculate the exact posterior means to arbitrary precision
+using simulated draws $\alpha^{(m)}, \beta^{(m)}$ from the
+posterior,
+$$
+\begin{array}{rcl}
+\widehat{\alpha} & = & \displaystyle \frac{1}{M} \sum_{m = 1}^M \alpha^{(m)}
+\\[12pt]
+\widehat{\beta} & = & \displaystyle \frac{1}{M} \sum_{m = 1}^M \beta^{(m)}.
+\end{array}
+$$
+
+Unlike maximum likelihood estimates, posterior mean estimates are
+unbiased and have the pleasant property of minimizing expected square
+error in the parameter estimates (we define square error below).
+
+Given the posterior means, we can define another point-based
+approximation of the predictive distribution,
+$$
+p(\tilde{y} \mid \tilde{x}, x, y)
+\ \approx \
+p(\tilde{y} \mid \tilde{x}, \widehat{\alpha}, \widehat{\beta}).
+$$
+
+As with posterior mode estimates, posterior mean estimates are
+approximate in that they assume that $\widehat{\alpha},
+\widehat{\beta}$ are estimated correctly, whereas there is residual
+uncertainty after observing the training data $(x, y).$
+
+# Simulation Experiment
+
+In this section, we're going to simulate some correlated predictors
+and outcomes and then fit our logistic regression model with full
+Bayes, posterior modes, and posterior means for the purposes of
+evaluating predictive accuracy.
+
+## Stan program
+
+Here's a Stan program implementing the logistic regression model.
+```{r}
+print_file('logistic-regression.stan')
+```
+The program includes not only the data and model declaration, but also
+the predictive distributions for square error and log loss. The true
+values of the test cases are provided to the program, but they are not
+used during training.^[Stan's generated quantities block is executed
+each iteration based on the parameter draws for that iteration; no
+information in the generated quantities block flows back to parameter
+estimation. For semi-supervised learning in cases such as naive Bayes
+or HMMs where there isn't the factorization of predictors found in
+logistic regression, we would need to move the tests into the model
+block to provide full Bayesian inference that also uses information in
+the test predictors (but not the test outcomes).]
+
+
+## Simulated Data
+
+We'll assume the predictor vectors are multivariate normal with
+$K \times K$ covariance matrix $\Sigma$ defined by
+$$
+\Sigma_{i, j} = \rho^{|i - j|},
+$$
+for some $\rho \in (0, 1).$
+
+```{r}
+K <- 50
+rho <- 0.9
+Sigma <- matrix(0, K, K)
+for (i in 1:K) {
+  for (j in 1:K) {
+    Sigma[i, j] <- rho^abs(i - j)
+  }
+}
+```
+
+```{r}
+inv_logit <- function(u) 1 / (1 + exp(-u))
+
+alpha <- rnorm(1, 0, 0.5)
+beta <- rnorm(K, 0, 0.5)
+
+N <- 200
+N_test <- 500
+x <- mvrnorm(N, rep(0, K), Sigma)
+
+y <- rbinom(N, 1, inv_logit(alpha + x %*% beta))
+
+x_test <- mvrnorm(N_test, rep(0, K), Sigma)
+y_test <- rbinom(N_test, 1, inv_logit(alpha + x_test %*% beta))
+
+data <- list(K = K, N = N, x = x, y = y,
+             N_test = N_test, x_test = x_test, y_test = y_test)
+```
+Specifically, we'll take $K = `r K`$, $\rho = `r rho`$, and $N = `r
+N`$. Here's what the matrix looks like for $K = 5$ and $\rho = 0.9$.
+$$
+\Sigma \ = \
+\left[
+\begin{array}{ccccc}
+1 & 0.9 & 0.81 & 0.73 & 0.66 \\
+0.9 & 1 & 0.9 & 0.81 & 0.73 \\
+0.81 & 0.9 & 1 & 0.9 & 0.81 \\
+0.73 & 0.81 & 0.9 & 1 & 0.9 \\
+0.66 & 0.73 & 0.81 & 0.9 & 1
+\end{array}
+\right]
+$$
+
+With highly correlated predictors, a predictor vector of size $K$
+provides less information than if the predictors were not correlated.
+How much less information depends on the degree of correlation---if
+two predictors are perfectly correlated or anti-correlated, there is no new
+information.
+
+# Loss Functions for Evaluating predictions
+
+Our goal is to provide predictive estimates of the probability that an
+unobserved outcome $\tilde{y}_n$ takes value 1, given predictors
+$\tilde{x}_n$ and training data $(x, y)$.  In symbols, we want to
+estimate
+$$
+\mbox{Pr}\left[\tilde{y}_n = 1 \mid \tilde{x}_n, x, y\right].
+$$
+To do so, we want to use a *proper scoring rule*.^[Proper scoring
+rules are ones which are optimized by the true distribution. Accuracy
+(aka 0/1 loss), as is commonly used in machine learning, is not a
+proper scoring rule.]  We will consider three proper scoring functions
+(log loss, square loss, spherical loss) and one improper one (absolute
+loss).
+
+## Log loss
+
+The simplest proper scoring rule is just the log probability (density
+or mass) of the true result under the model.  For a given target $y_n$
+and probabilistic prediction $\hat{y}_n$, the log loss is defined by
+
+$$
+\begin{array}{rcl}
+\mbox{logloss}(y_n, \hat{y}_n)
+& = & - \log \mbox{bernoulli}(y_n \mid \hat{y}_n)
+\\[4pt]
+& = & (y_n = 1) \ ? \ -\log(\hat{y}_n) \ : \ -\log(1 - \hat{y}_n).
+\\[4pt]
+& = & - \log (1 - \left| y_n - \hat{y}_n \right|).
+\end{array}
+$$
+Extending to a complete test set $y$ and response set $\tilde{y}$,
+$$
+\mbox{logloss}(y, \tilde{y})
+\ = \
+\sum_{n=1}^{N} \mbox{logloss}(y_n, \hat{y}_n).
+$$
+
+We will report log loss as a rate per item after dividing by the
+number of test items, $\tilde{N}.$
+
+If we think of our test set elements $\tilde{y}_n$ as draws from the true
+distribution $p(\tilde{y}_n \mid \tilde{x}_n)$, then log loss provides a
+Monte Carlo estimate of the cross entropy rate from the true distribution of
+outcomes to the probabilistic forecasts.^[Cross-entropy is defined
+from a density $p$ to a density $q$ as
+$$
+\begin{array}{rcl}
+\mathrm{H}[p, q]
+& = &
+- \int_Y p(y \mid x) \log q(y \mid x) \, \mathrm{d}y,
+\\[8pt]
+& \approx &
+-\frac{1}{\tilde{N}} \sum_{n=1}^{\tilde{N}} \log q(\tilde{y}_n \mid \tilde{x}_n).
+\end{array}
+$$
+]
+
+
+## Square error
+
+When the estimate takes a point form, as in our estimate of a
+probability, we can compute square loss,^[Also known as a Brier score
+in machine learning after Glenn Brier, the statistician who introduced
+it in 1950.]
+$$
+\mbox{sqloss}(y_n, \tilde{y}_n)
+\ = \
+(y_n - \hat{y}_n)^2.
+$$
+Extending to an entire test set, the loss may be expressed compactly as
+$$
+\begin{array}{rcl}
+\mbox{sqloss}(y, \hat{y}) =
+& = & (y - \hat{y})^{\top} \, (y - \hat{y})
+\\[4pt]
+& = & \sum_{n=1}^{\tilde{N}} (y_n - \hat{y}_n)^2.
+\end{array}
+$$
+
+Square loss is important in probability theory as it is the loss under
+which the average is the optimal estimator.^[In symbols, for $x \in \mathbb{R}^N$,
+$$\mbox{mean}(x) = \mbox{argmin}_{u} \sum_{n=1}^N (u - x_n)^2$$.]  Put
+another way, the posterior mean is the point estimate that minimizes
+expected square loss.
+
+Typically, when considering square error, we consider the square error
+rate by dividing by the number of test items, and then take the square
+root of that to put it back on the natural probability scale; the
+result is called "root mean square error" (RMSE),^[Taking means and
+square roots are monotonic operations and do not change the ordering
+of comparisons.]
+$$
+\mbox{rmse}(y, \hat{y})
+\ = \
+\sqrt{\frac{sqloss(y, \hat{y})}
+           {\mbox{size}(y)}}
+$$
+
+## Spherical loss
+
+Given an outcome $y_n$ and predicted probability $\hat{y}_n$, the
+spherical loss is
+$$
+\mbox{sphereloss}(y_n, \hat{y}_n)
+\ = \
+1 - \frac{\displaystyle \left| y - \hat{y} \right|}
+         {\displaystyle \sqrt{\hat{y}^2 + (1 - \hat{y})^2}}.
+$$
+Extending to a whole data set, we just sum the spherical losses,
+$$
+\mbox{sphereloss}(y, \hat{y})
+\ = \
+\sum_{n=1}^N \mbox{sphereloss}(y_n, \hat{y}_n).
+$$
+
+Although this is a proper loss function, we will not be evaluating
+spherical loss because of the difficulty in interpretation---it is on
+the natural scale of $y$, but adjusted by the skew in the prediction.
+This reduces losses when predictive probabilities $\hat{y}$ are near
+one half and increases losses when predictions are extreme (near zero
+or one).
+
+
+## Absolute error
+
+The final loss function we consider is improper, and corresponds to
+the absoute error, rather than square error.  The absolute value
+function keeps the error positive,
+
+$$
+\mbox{absloss}(y_n, \tilde{y}_n)
+\ = \
+\left| \tilde{y}_n - \hat{y}_n \right|.
+$$
+
+For multiple $y_n$, we sum the absolute losses.  But we report them as
+an average given that the values are on the natural probability scale.
+
+Absolute error is *not* a proper probabilistic scoring rule.
+
+
+## Plotting the loss functions
+
+The absolute error can range between 0 and 1.  The square error has
+the same range.  Log loss is minimized at zero, but unbounded as error
+approaches one.  We can plot these functions
+
+```{r fig.cap = "Three loss functions plotted as a function of absolute error.  Because the dimensions of the loss functions vary and the scale is irrelevant for comparison, we have multiplied the loss functions so that they have loss one half for an absolute error of one half.  For absolute errors between zero and one half, square error grows most slowly and absolute error increases the fastest.  For errors above one half, square error grows fastest initially, then log loss takes over for very high absolute error (above ninety percent or so)."}
+
+err = seq(0.001, 0.999, by = 0.01)
+err_df <-
+  rbind(data.frame(error = err,  loss = err^2 * 0.5 / 0.5^2,
+                   type = "sq error"),
+        data.frame(error = err, loss = abs(err),
+	           type = "abs error"),
+	data.frame(error = err, loss = -log(1 - err) * (0.5 / -log(0.5)),
+	           type = "log loss"))
+err_plot <-
+  ggplot(err_df, aes(x = error, y = loss, group = type)) +
+  geom_line(aes(color = type)) +
+  xlab("absolute prediction error") +
+  ylab("normalized loss") +
+  ggtheme_tufte()
+err_plot
+```
+Each loss function has been multiplicatively normalized to provide a
+loss of one half for an absolute error of one half while leaving a
+loss of zero for an absolute error of zero.
+
+It's also useful to observe the plot on the log scale to visualize the
+behavior of the loss functions at values near zero.
+
+```{r fig.cap = "Log scale version of the previous plot of loss versus absolute error.  The log scale highlights the differing behavior for small absolute errors."}
+log_err_plot <-
+  ggplot(err_df, aes(x = error, y = loss, group = type)) +
+  geom_line(aes(color = type)) +
+  scale_y_log10(breaks = c(0.000001, 0.001, 1),
+                labels = c("0.000001", "0.001", "1")) +
+  scale_x_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1),
+                     labels = c(1, 0.75, 0.5, 0.25, 0)) +
+  xlab("absolute prediction error") +
+  ylab("normalized loss") +
+  ggtheme_tufte()
+log_err_plot
+```
+
+
+# Evaluation with Stan
+
+Fitting the model we provided earlier to our simulate data in Stan
+provides the following output, where we have only included the first
+coefficient, $\beta_1$.
+```{r results = 'hide'}
+model <- stan_model("logistic-regression.stan")
+fit <- sampling(model, data = data, iter = 4000,
+                control = list(adapt_delta = 0.99, stepsize = 0.01),
+		refresh = 0, open_progress = FALSE)
+```
+```{r}
+print(fit, prob = c(0.01, 0.99),
+           pars = c("alpha", "beta[1]", "log_loss", "sq_loss"))
+```
+
+The 1% and 99% values provide the ends of the central 98% posterior
+interval on log loss and square loss for parameter values
+$\alpha^{(m)}, \beta^{(m)}$, drawn from the posterior. With only $`r
+N`$ training examples with correlated parameters, there is a great
+deal of uncertainty in the posteriors for coefficients and hence for
+predictions and for loss versus the test set. The range of log loss
+and square loss values shows the variability in those metrics across
+draws from the posterior.
+
+
+## Full Bayesian inference
+
+We first consider full Bayesian inference, where our estimate is
+derived from
+$$
+p(\tilde{y}_n \mid \tilde{x}_n, x, y)
+\ = \
+\int p(\tilde{y}_n \mid \tilde{x}_n, \alpha, \beta)
+\cdot p(\alpha, \beta \mid x, y) \, \mbox{d}(\alpha, \beta).
+$$
+The result of running the simulation yields the following losses.
+
+```{r}
+y_test_hat_bayes <- rep(0, N_test)
+for (n in 1:N_test)
+  y_test_hat_bayes[n] <- mean(extract(fit)$E_y_test[ , n])
+
+sq_error_bayes <- sum((y_test - y_test_hat_bayes)^2)
+log_loss_bayes <- -sum(dbinom(y_test, 1, y_test_hat_bayes, log = TRUE))
+
+printf("BAYES: sq error %5.2f  root mean sq error %3.2f",
+       sq_error_bayes, sqrt(sq_error_bayes / N_test))
+printf("BAYES: log loss %5.2f  log loss rate %3.2f",
+       log_loss_bayes, log_loss_bayes / N_test)
+```
+
+The root mean square error being reported is the square root of the
+average square loss per test item. The log loss rate is just the log
+loss divided by the number of test items.
+
+## Variational inference
+
+Using the draws from the posterior, we calculate the posterior means
+$(\widehat{\alpha}, \widehat{\beta})$ and then plug those in to use
+the estimate
+$$
+p(\tilde{y}_n \mid \tilde{x_n}, \widehat{\alpha}, \widehat{\beta}).
+$$
+The resulting errors are as follows.
+```{r}
+alpha_hat <- mean(extract(fit)$alpha)
+beta_hat <- rep(0, K)
+for (k in 1:K)
+  beta_hat[k] <- mean(extract(fit)$beta[ , k])
+y_test_hat_vi <- inv_logit(alpha_hat + (x_test %*% beta_hat))
+
+sq_error_vi <- sum((y_test - y_test_hat_vi)^2)
+log_loss_vi <- -sum(dbinom(y_test, 1, y_test_hat_vi, log = TRUE))
+
+printf("VB: sq error %5.2f  root mean sq error %3.2f",
+       sq_error_vi, sqrt(sq_error_vi / N_test))
+printf("VB: log loss %5.2f  log loss rate %3.2f",
+       log_loss_vi, log_loss_vi / N_test)
+```
+
+## Max a posterior inference
+
+Here, we use Stan's optimizing function to find the maximum a
+posteriori (MAP) estimates $\alpha^*, \beta^*$ and proceed to plug
+those in for inference,
+$$
+p(\tilde{y}_n \mid \tilde{x_n}, \alpha^*, \beta^*).
+$$
+The resulting errors are as follows.
+
+```{r}
+fit_map <- optimizing(model, data = data, verbose = FALSE, refresh = 0)
+alpha_hat_map <- fit_map$par[['alpha']]
+beta_hat_map <- rep(0, K)
+for (k in 1:K)
+  beta_hat_map[k] <- fit_map$par[[paste('beta[', k, ']', sep = "")]]
+
+y_test_hat_map <- inv_logit(alpha_hat_map + (x_test %*% beta_hat_map))
+
+sq_error_map <- sum((y_test - y_test_hat_map)^2)
+log_loss_map <- -sum(dbinom(y_test, 1, y_test_hat_map, log = TRUE))
+
+
+printf("MAP: sq error %5.2f  root mean sq error %3.2f",
+       sq_error_map, sqrt(sq_error_map / N_test))
+printf("MAP: log loss %5.2f  log loss rate %3.2f",
+       log_loss_map, log_loss_map / N_test)
+```
+
+
+# Probabilistic Training and Test Data
+
+Traditionally, we estimate (i.e., train) logistic regression models
+based on dichotomous observations
+$$
+y_n \in \{ 0, 1 \}.
+$$
+
+Now suppose instead that the outcomes $y_n$ are not known exactly, but
+only with some uncertainty.  That is, rather than knowing $y_n$, we
+only have a probability estimate of whether $y_n = 1$ or $y_n = 0.$
+Such uncertainty can arise from noisy measurements of the true $y_n$
+value.  For example, the data may be crowdsourced human data
+coding,^[Also known as data rating, annotation, and labeling.] or it
+may arise from the application of imprecise heuristics.
+Alternatively, we may have uncertainty propagated from measurement
+devices such as RNA-seq readers of genomic sequences.
+
+The math all generalizes if we assume that instead of dichotomous
+outcomes $y_n \in \{ 0, 1 \},$ we have probabilistic outcomes,
+$$
+\phi_n = \mbox{Pr}[y_n = 1 \mid x_n].
+$$
+
+Typically these $\phi_n$ are the estimates from another probabilistic
+model, such as a noisy measurement model of human data coding or a
+model of fluorescence response and image processing steps for
+RNA-seq data.^[Ideally, the predictive variables $\phi$ estimated by the
+training data measurement error model and the parameters $\alpha,
+\beta$ of a regression based on that model will be modeled and
+estimated jointly.]
+
+## Weighted regression
+
+Training is simple with weighted observations.  The log likelihood function for
+dichotomous data $y_n \in \{ 0, 1 \}$ is as defined previously,
+
+$$
+\begin{array}{rcl}
+\log p(y \mid x, \alpha, \beta)
+& = &
+\log \prod_{n = 1}^N p(y_n \mid x_n, \alpha, \beta)
+\\[6pt]
+& = &
+\sum_{n = 1}^N
+  \log
+  \mbox{bernoulli}(y_n \mid \mbox{logit}^{-1}(\alpha + x_n \, \beta)).
+\end{array}
+$$
+
+To generalize to continuous outcomes $\phi_n$, we work in expectation
+with respect to the $\phi_n$.  So instead of the likelihood, we use a
+weighted version,
+$$
+\sum_{n=1}^N
+\begin{array}{l}
+\phi_n
+\cdot
+\log \mbox{bernoulli}(1 \mid \mbox{logit}^{-1}(\alpha + x_n \, \beta))
+\\
+{ } + (1 - \phi_n)
+\cdot
+\log \mbox{bernoulli}(0 \mid \mbox{logit}^{-1}(\alpha + x_n \, \beta))
+.
+\end{array}
+$$
+This quantity simply replaces the likelihood in the model.  If the
+values of $\phi_n$ are 0 or 1, it reduces to our original likelihood
+function.
+
+
+In Stan, our original vectorized sampling statement,
+```
+y ~ bernoulli_logit(alpha + x * beta);
+```
+is equivalent to the unrolled version
+```
+for (n in 1:N)
+  target += bernoulli_logit(y[n] | alpha + x[n] * beta);
+```
+The weighted version computes the density as the expected log
+likelihood given probability estimates $\phi_n = \mbox{Pr}[y_n = 1
+\mid x_n],$
+```
+for (n in 1:N) {
+  target += phi[n] * bernoulli_logit(1 | alpha + x[n] * beta);
+  target += (1 - phi[n]) * bernoulli_logit(0 | alpha + x[n] * beta);
+}
+```
+It's important that both target increment statements are used.  The
+effect of incrementing both 0 and 1 results in proportion to their
+weights provides a form of data-driven regularization, where the
+resulting density is maximized when
+
+$$
+\phi_n = \mbox{logit}^{-1}(\alpha + x_n \, \beta).
+$$
+
+That is, we penalize coefficients for predicting probabilities for
+$y_n$ that are too far away from the training set probabilities
+$\phi_n$.  If we had sampled rather than weighted, the result would be
+the same in the limit of increasing amounts of data.
+
+The resulting formulation is not properly generative---there is no way
+to generate the "observations" $\phi_n$ from the regression
+coefficients $\alpha, \beta$ and the observed predictors $x_n.$
+
+In this particular case, because we know that the log odds are given
+by $\mbox{logit}(\phi_n)$, instead of using a weighted logistic regression,
+we can simply train a standard linear regression
+$$
+\mbox{logit}(\phi_n) \sim \mbox{normal}(\alpha + x_n \, \beta, \sigma)
+$$
+and use the coefficients $\alpha, \beta$ predictively for new data
+with a logit link function,
+$$
+\tilde{y}_n \sim \mbox{bernoulli}(\mbox{logit}^{-1}(\alpha + \tilde{x}_n \, \beta)).
+$$
+
+## Weighted logistic regression with Stan
+
+Here's the full Stan model for weighted logistic regression.  It
+follows the description in the previous section.  The data has been
+modified to read in a vector of probabilities `phi[1:N]` rather than a
+binary array `y[1:N].`
+```{r}
+print_file('weighted-logistic-regression.stan')
+```
+
+What we want to compare is how well we can estimate the model with
+draws from the distribution given by $\phi$ versus estimating it using
+the $\phi$ directly.  We will again simulate $N = 200$ data points,
+but this time rather than drawing $y_n \sim
+\mbox{bernoulli}(\mbox{logit}^{-1}(\alpha + x_n \, \beta),$ we will
+add noise to our estimates of $\phi_n$,^[If we do not add noise, the
+values of $\alpha$ and $\beta$ will be exactly identified if $N > K +
+1$ and the predictors are not perfectly correlated.]
+$$
+\phi_n = \alpha + x_n \, \beta + \epsilon_n
+$$
+where
+$$
+\epsilon_n \sim \mbox{normal}(0, 0.25).
+$$
+which is roughly give or take 10% for a value of 50% when converted
+back to the probability scale; a noise scale of 0.5 rather than 0.25
+would lead to an error of plus or minus 20% or so.
+
+Here are the results of estimating with these approaches compared to
+the true values.
+
+```{r results = 'hide'}
+K <- 50
+rho <- 0.9
+Sigma <- matrix(0, K, K)
+for (i in 1:K) {
+  for (j in 1:K) {
+    Sigma[i, j] <- rho^abs(i - j)
+  }
+}
+N <- 200
+alpha <- rnorm(1, 0, 0.25)
+beta <- rnorm(K, 0, 0.25)
+
+N <- 200
+N_test <- 500
+x <- mvrnorm(N, rep(0, K), Sigma)
+
+y <- rbinom(N, 1, inv_logit(alpha + x %*% beta))
+phi <- alpha + x %*% beta + rnorm(N, 0, 0.25)
+
+weighted_model <- stan_model("weighted-logistic-regression.stan")
+weighted_fit <-
+  sampling(weighted_model, iter = 4000,
+           data = list(N = N, K = K, x = x, phi = as.vector(phi)),
+           control = list(adapt_delta = 0.99, stepsize = 0.01),
+           refresh = 0, open_progress = FALSE)
+weighted_draws <- extract(weighted_fit)
+
+unweighted_model <- stan_model("simple-logistic-regression.stan")
+sampled_fit <-
+  sampling(unweighted_model, iter = 4000,
+           data = list(N = N, K = K, x = x, y = y),
+           control = list(adapt_delta = 0.99, stepsize = 0.01),
+           refresh = 0, open_progress = FALSE)
+sampled_draws <- extract(sampled_fit)
+```
+
+```{r}
+printf("%10s: alpha = %5.2f  beta[1] = %5.2f  beta[2] = %5.2f",
+       "true", alpha, beta[1], beta[2])
+printf("%10s: alpha = %5.2f  beta[1] = %5.2f  beta[2] = %5.2f",
+       "weighted", mean(weighted_draws$alpha),
+       mean(weighted_draws$beta[, 1]), mean(weighted_draws$beta[, 2]))
+printf("%10s: alpha = %5.2f  beta[1] = %5.2f  beta[2] = %5.2f",
+       "sampled", mean(sampled_draws$alpha),
+       mean(sampled_draws$beta[, 1]), mean(sampled_draws$beta[, 2]))
+```
+Even with that much noise added to the log odds in the weighted case,
+the estimates from a training set of size 200 are much better, as can
+be seen from the handful of coefficients reported above.
+
+The moral of this story is that binary data is very weak, but
+probabilistic data is much stronger.
+
+
+## Weighted evaluation with scoring functions
+
+All of our loss functions generalize to compute expected loss when
+faced with data of the form $\phi_n = \mbox{Pr}[y_n = 1 \mid x_n,
+\alpha, \beta]$.  For example, given the linear estimate $\hat{y}_n =
+\alpha + x_n \, \beta$ of the log odds that $y_n = 1$, all of our loss
+functions are minimized when $\phi_n = \mbox{logit}^{-1}(\alpha + x_n
+\, \beta).$
+
+This transition from evaluation on a single outcome to weighted
+evaluations where the truth has a probability is commonly used in
+evaluating forecasts. The idea is that there's a true uncertainty of
+$y_n$ given the predictors $x_n$, and we want to evaluate whether our
+inference system is estimating this uncertain properly. Lifting the
+scoring rules to deal with probabilistic test data yields general
+scoring functions as are used in the probabilistic forecasting
+literature. In the simplest case of binary distributions, the general
+scoring function corresponds to estimating the cross-entropy rate from
+the true probability distribution $\mbox{bernoulli}(\phi_n)$ to the
+estimated one $\mbox{bernoulli}(\hat{y}_n)$. That is, the log loss
+rate estimates the cross-entropy rate, which is the cost of coding
+variables $y_n$ using estimates $\hat{y}_n$ which given that log loss
+is a proper scoring rule, is minimized when $\hat{y}_n = \phi_n$.
+
+# Conclusion
+
+When the model is well specified for the problem and there is not a
+huge amount of data, as in our logistic regression example, it's much
+more accurate to use Bayesian inference. With large amounts of data
+relative to the number of predictors, approximate methods perform
+almost as well as full Bayes.
+
+One may argue that "big data" abound in real applications and "little
+data" should not be a problem.  In reality, much of the big data we
+have consists of lots of little data.  We may read millions of base
+pairs, but the amount of data we might have about two splice variants
+of interest is typically on the scale of the simulations done in this
+paper.  Similarly, if we look at e-commerce, we have tons of data, but
+relatively little data about individual products or customers, as
+new users and items are continually added and old behaviors change.
+
+To summarize the quantitative results in this short note, the error
+rates for a training set of size `r N` with `r K` correlated
+predictors are summarized in the following table.
+
+| Inference            | root mean square error            | log loss rate                |
+|---------------------:|----------------------------------:|-----------------------------:|
+| Full Bayes           | `r sqrt(sq_error_bayes / N_test)` | `r log_loss_bayes / N_test` |
+| MAP (posterior mode) | `r sqrt(sq_error_map / N_test)`   | `r log_loss_map / N_test`      |
+| VB (posterior mean)  | `r sqrt(sq_error_vi / N_test)`    | `r log_loss_vi / N_test`     |
+
+The result from taking a single posterior draw $(\alpha^{(m)},
+\beta^{(m)})$ as a point estimate depends heavily on the draw, but
+almost all such draws are worse than the posterior mode and the
+posterior mean.
+
+
+
+# Appendix A:  Some alternative evals
+
+We also include a table of evaluation results for full Bayes versus
+plugging in either the posterior mode (MAP) or mean (VB).  We only run
+a single simulation for each set of conditions as it provides an
+overall feel for the trend of the evaluations.^[Combining simulations
+is tricky as each simulated condition has a different underlying
+entropy and hence different lower bound on cross-entropy and hence log
+loss.]
+
+
+```{r}
+cov_matrix <- function(K, rho) {
+  Sigma <- matrix(0, K, K)
+  for (i in 1:K) {
+    for (j in 1:K) {
+      Sigma[i, j] <- rho^abs(i - j)
+    }
+  }
+  Sigma
+}
+
+losses <- function(y, y_hat) {
+  N <- length(y)
+
+  abs_err <- sum(abs(y - y_hat))
+  mae <- abs_err / N
+
+  sq_err <- sum((y - y_hat)^2)
+  rmse <- sqrt(sq_err / N)
+
+  log_loss <- -sum(dbinom(y, 1, y_hat, log = TRUE))
+  log_loss_rate <- log_loss / N
+
+  list(mae = mae, rmse = rmse, log_loss_rate = log_loss_rate)
+}
+
+losses_table <- function(y, y_hat, N, K, rho, estimator) {
+  losses = losses(y, y_hat)
+  data.frame(estimator = estimator, N = N, K = K, rho = rho,
+             log_loss_rate = losses$log_loss_rate,
+	     rmse = losses$rmse,
+             mae = losses$mae)
+}
+
+model <- stan_model("logistic-regression.stan")
+
+Ns <- c(8, 32, 128, 512)
+Ks <- c(2, 8, 32, 128)
+rhos <- c(0, 0.9)
+
+results <- data.frame()
+
+for (N in Ns) {
+  for (K in Ks) {
+    if (K > 2 * N) next
+    for (rho in rhos) {
+        Sigma <- cov_matrix(K, rho)
+
+        alpha <- rnorm(1, 0, 0.5)
+        beta <- rnorm(K, 0, 0.5)
+
+        x <- mvrnorm(N, rep(0, K), Sigma)
+
+        y <- rbinom(N, 1, inv_logit(alpha + x %*% beta))
+        N_test <- 100
+        x_test <- mvrnorm(N_test, rep(0, K), Sigma)
+        y_test <- rbinom(N_test, 1, inv_logit(alpha + x_test %*% beta))
+
+        data <- list(K = K, N = N, x = x, y = y,
+                     N_test = N_test, x_test = x_test, y_test = y_test)
+
+        # Bayes
+        fit <- sampling(model, data = data, refresh = 0, init = 0,
+	                open_progress = FALSE)
+
+        y_test_hat_bayes <- rep(0, N_test)
+        for (n in 1:N_test) {
+          y_test_hat_bayes[n] <- mean(extract(fit)$E_y_test[ , n])
+        }
+	results <-
+	  rbind(results,
+	        losses_table(y_test, y_test_hat_bayes, N, K, rho, "Bayes"))
+
+        # MAP plug-in
+        fit_map <- optimizing(model, data = data, refresh = 0, verbose = FALSE)
+        alpha_star <- fit_map$par[['alpha']]
+        beta_star <- rep(0, K)
+        for (k in 1:K)
+          beta_star[k] <- fit_map$par[[paste('beta[', k, ']', sep = "")]]
+
+        y_test_star <- inv_logit(alpha_star + (x_test %*% beta_star))
+	results <-
+	  rbind(results,
+	        losses_table(y_test, y_test_star, N, K, rho, "MAP"))
+
+        # VB plug-in
+        alpha_hat <- mean(extract(fit)$alpha)
+        beta_hat <- rep(0, K)
+        for (k in 1:K)
+          beta_hat[k] <- mean(extract(fit)$beta[ , k])
+        y_test_hat_vb <- inv_logit(alpha_hat + (x_test %*% beta_hat))
+	results <-
+	  rbind(results,
+	        losses_table(y_test, y_test_hat_vb, N, K, rho, "VB"))
+    }
+  }
+}
+
+# no idea why this doesn't work any more. :-(
+knitr::kable(results,
+  caption = "Log loss rate, root mean square error (rmse), and mean absolute error (mae) for full Bayes and plug-in estimates with posterior mode (MAP) and mean (VB) given $N$ observations, $K$ predictors, and a base $\\rho$ correlation between adjacent predictors.")
+```
+
+```{r}
+knitr::kable(results, caption = "Foo") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+print(results, digits = 2)
+```
+
+Do I need something afterward here?
+
+# Appendix B:  R Session Information
+
+```{r}
+sessionInfo()
+```
