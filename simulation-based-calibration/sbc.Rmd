@@ -11,7 +11,7 @@ output:
 ```{r, echo = FALSE, message = FALSE, warning = FALSE}
 library(ggplot2); library(knitr); library(rstan);  library(tufte)
 
-options(digits = 2);  options(htmltools.dir.version = FALSE)
+options(digits = 3);  options(htmltools.dir.version = FALSE)
 
 println <- function(msg) { cat(msg); cat("\n") }
 printf <- function(pattern, ...) println(sprintf(pattern, ...))
@@ -355,13 +355,12 @@ m & \mu & \sigma \\ \hline
 4 & 1.51 & 0.31 \\
 \end{array}
 $$
-Then the value of $\textrm{I_lt_sim}$ will be the following table,
+Then the value of $\textrm{I_lt_sim}$ will be the following array,
+with four rows and two columsn,
 $$
 \begin{array}{r|rr}
-  & \mu^{(m)} < \mu^{\textrm{sim}} &
+m & \mu^{(m)} < \mu^{\textrm{sim}} &
     \sigma^{(m)} < \sigma^{\textrm{sim}}
-\\[4pt]
-m & \textrm{I_lt_sim}_1 & \textrm{I_lt_sim}_2
 \\[4pt] \hline
 1 & 0 & 0 \\
 2 & 1 & 1 \\
@@ -371,8 +370,11 @@ m & \textrm{I_lt_sim}_1 & \textrm{I_lt_sim}_2
 $$
 In two of the three posterior draws, $\mu^{(m)} < \mu^{\textrm{sim}}$ and
 in one of the posterior draws, $\sigma^{(m)} < \sigma^{\textrm{sim}}.$
-These totals are just the sums of the columns.  To get final ranks
-numbered from one, we will add one to these sums (which may be zero).
+
+The rank of $\mu^{\textrm{sim}}$ and $\sigma^{\textrm{sim}}$ are thus
+the sums of the columns.  These totals are just the sums of the
+columns.  To get final ranks numbered from one, we will add one to
+these sums (which may be zero).
 
 The number of possible ranks for the simulated parameters is one larger
 than the number of posterior parameter draws.  For example, if we have
@@ -406,6 +408,8 @@ the null hypothesis of calibration.  Therefore the squared difference
 from the expected count of each bin will follow a $\chi^2$
 distribution and we can employ the standard hypothesis test for
 uniformity.
+
+# Coding Simulation-Based Calibration in RStan
 
 ## Testing uniformity in R
 
@@ -449,7 +453,6 @@ the `chisq.test` call that indicates the expected probability of
 inclusion in each bin.]
 
 
-
 ## R function for simulation-based calibration of Stan programs
 
 Given the Stan program to do the heavy lifting of fitting, we can
@@ -465,8 +468,7 @@ Then we have the `sbc` function itself, which needs the include of `rstan.`
 # @param model: precompiled Stan model
 # @param data: data for model (defaults to empty list)
 # @return size of the generated quantity array I_lt_sim
-num_monitored_params <-
-  function(model, data = list()) {
+num_monitored_params <- function(model, data = list()) {
     fit <- sampling(model, data = data,
                     iter = 1, chains = 1, warmup = 0,
                     refresh = 0, seed = 1234)
@@ -489,8 +491,7 @@ num_monitored_params <-
 sbc <- function(model, data = list(),
                 sbc_sims = 1000, stan_sims = 999,
                 init_thin = 4, max_thin = 64,
-                target_n_eff = 0.8 * stan_sims,
-		seed = sample(1e6, size = 1)) {
+                target_n_eff = 0.8 * stan_sims) {
   num_params <- num_monitored_params(model, data)
   ranks <- matrix(nrow = sbc_sims, ncol = num_params)
   thins <- rep(NA, sbc_sims)
@@ -498,10 +499,12 @@ sbc <- function(model, data = list(),
     n_eff <- 0
     thin <- init_thin
     while (TRUE) {
-      fit <- sampling(model, data = data,
-                      seed = seed, chain_id = n,
-                      control = list(adapt_delta = 0.99),
+      fit <- sampling(model,
+                      data = data,
+                      chains = 1,
                       iter = 2 * thin * stan_sims,
+                      thin = thin,
+                      control = list(adapt_delta = 0.99),
                       refresh = 0)
       fit_summary <- summary(fit, pars = c("lp__"), probs = c())$summary
       n_eff <- fit_summary["lp__", "n_eff"]
@@ -716,7 +719,9 @@ bad_result$p_value
 ```
 
 The resulting $p$-values show a clear failure of calibration, as we
-would expect.  Here are the histog
+would expect.  Here are the histograms of ranks, which visually
+indicate how the location parameter is well calibrated but not the
+scale parameter.
 
 ```{r, fig.cap = "Histogram of ranks of the simulated parameter value with respect to the posterior draws for the two model parameters. Because the model is misspecified for the data generating process, we expect to see clear evidence of non-uniformity in the histograms."}
 
@@ -756,9 +761,10 @@ Thanks to Lauren Kennedy for helping me with R data structures^[If you
 don't know `str()`, you should.  It's like magic.  I can finally use a
 Stan fit object without the vignette.].  And thanks to Jonah Gabry for
 the trick on using an integer array of comparison points to make the
-code more general;  he already had SBC implemented for Bayesplot on a
-branch before I wrote this case study.
-
+code more general; he already had SBC implemented for Bayesplot on a
+branch before I wrote this case study.  Please don't blame Aki Vehtari
+for my poor uniformity tests---he gave me advice on better ones I just
+haven't acted on yet.
 
 ## Appendix: Included R code
 
