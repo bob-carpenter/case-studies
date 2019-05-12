@@ -1,0 +1,849 @@
+---
+title: "Simulation-Based Calibration with Stan"
+author: "Bob Carpenter"
+date: "May 2019"
+output:
+  tufte::tufte_html:
+    toc: true
+    toc_depth: 1
+---
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+library(ggplot2); library(knitr); library(rstan);  library(tufte)
+
+options(digits = 2);  options(htmltools.dir.version = FALSE)
+
+println <- function(msg) { cat(msg); cat("\n") }
+printf <- function(pattern, ...) println(sprintf(pattern, ...))
+print_file <- function(file) cat(paste(readLines(file), "\n", sep=""), sep="")
+
+knitr::opts_chunk$set(
+  include = TRUE,  cache = FALSE,  collapse = TRUE,  echo = TRUE,
+  message = FALSE, tidy = FALSE,  warning = FALSE,   comment = "  ",
+  dev = "png",  dev.args = list(bg = '#FFFFF8'),  dpi = 300,
+  fig.align = "center",  fig.width = 7,  fig.asp = 0.618,  fig.show = "hold",
+  out.width = "90%")
+
+ggtheme_tufte <- function() {
+  theme(plot.background =
+          element_rect(fill = "#fffff8",
+                       colour = "#fffff8",
+                       size = 0.5,
+                       linetype = "solid"),
+        plot.margin=unit(c(1, 1, 0.5, 0.5), "lines"),
+        panel.background =
+          element_rect(fill = "#fffff8",
+                       colour = "#fffff8",
+                       size = 0.5,
+                       linetype = "solid"),
+        panel.grid.major = element_line(colour = "white",
+                                        size = 1, linetype="dashed"),
+        panel.grid.minor = element_blank(),
+        legend.box.background =
+          element_rect(fill = "#fffff8",
+                       colour = "#fffff8",
+                       linetype = "solid"),
+        axis.ticks = element_blank(),
+        axis.text = element_text(family = "Palatino", size = 14),
+        axis.title.x = element_text(family = "Palatino", size = 16,
+                                    margin = margin(t = 15,
+                                                    r = 0, b = 0, l = 0)),
+        axis.title.y = element_text(family = "Palatino", size = 16,
+                                    margin = margin(t = 0,
+                                                    r = 15, b = 0, l = 0)),
+        strip.background = element_rect(fill = "#fffff8",
+                                        colour = "#fffff8",
+                                        linetype = "solid"),
+        strip.text = element_text(family = "Palatino", size = 14),
+        legend.text = element_text(family = "Palatino", size = 14),
+        legend.title = element_text(family = "Palatino", size = 16,
+                                    margin = margin(b = 5)),
+        legend.background = element_rect(fill = "#fffff8",
+                                        colour = "#fffff8",
+                                        linetype = "solid"),
+        legend.key = element_rect(fill = "#fffff8",
+                                        colour = "#fffff8",
+                                        linetype = "solid")
+  )
+}
+```
+
+## Why simulation-based calibration?
+
+Simulation-based calibration (SBC) is a method to asses the ability of
+a software implementation of a sampler to sample from a given Bayesian
+posterior density.^[The method was originally developed in
+Cook, S. R., Gelman, A., & Rubin, D. B. (2006). <a
+href="(https://www.tandfonline.com/doi/pdf/10.1198/106186006X136976">Validation
+of software for Bayesian models using posterior
+quantiles</a>). *Journal of Computational and Graphical Statistics,*
+15(3), 675-692.
+<br />
+The refinement implemented here is from Talts,
+S., Betancourt, M., Simpson, D., Vehtari, A., & Gelman, A. (2018). <a
+href="https://arxiv.org/pdf/1804.06788">Validating Bayesian inference
+algorithms with simulation-based calibration).</a> *arXiv* 1804.06788.
+</quote>
+]
+Well-specified Bayesian models are calibrated by construction. That
+is, the posterior intervals will have proper frequentist coverage *if
+the model is correct.*^[Models are typicaly not correct, which is why
+we always apply posterior predictive checks.]  We can use
+this insight to validate that our software is sampling from the
+appropriate posterior by testing the software's calibration.
+
+
+# Bayesian posteriors
+
+Simulation-based calibration relies on the standard application of Bayes's
+rule^[The posterior density is proportional to joint density.] and the
+standard factoring of the joint density.^[The joint density is
+proportional to the prior times the likelihood.]
+$$
+\begin{array}{rcl}
+\underbrace{p(\theta \mid y)}_{\textrm{posterior}}
+& \propto &
+\underbrace{p(y, \theta)}_{\textrm{joint}}
+\\[8pt]
+& = &
+\underbrace{p(\theta)}_{\textrm{prior}}
+\cdot
+\underbrace{p(y \mid \theta)}_{\textrm{likelihood}}.
+\end{array}
+$$
+
+## Simulation-based inference
+
+A sampler is able to take a sequence of draws distributed according to
+the posterior distribution,
+$$
+\theta^{(1)}, \ldots, \theta^{(M)} \sim p(\theta \mid y).
+$$
+
+Samples are useful in that they allow us to calculate integrals
+corresponding to conditional expectations,
+$$
+\mathbb{E}[f(\theta) \mid y]
+\ = \
+\int f(\theta) \cdot p(\theta \mid y) \, \mathrm{d}\theta.
+$$
+
+
+# Simulation-based Calibration
+
+## Step 1: Simulate from the generative model
+
+Simulation-based calibration proceeds by following the generative
+story of the model.  It first simulates the value of the parameters
+according to the prior,
+$$
+\theta^{\textrm{sim}}
+\sim
+p(\theta).
+$$
+Next, it simulates data from the likelihood based on the simulated
+parameter values,
+$$
+y^{\textrm{sim}}
+\sim
+p(y \mid \theta^{\textrm{sim}}).
+$$
+By construction, $\left( y^{\textrm{sim}}, \theta^{\textrm{sim}}\right)$
+constitutes a draw from the model's joint density $p(y, \theta).$
+By Bayes's rule, we can invert this to show that
+$$
+p\!\left(\theta^{\textrm{sim}} \mid y^{\textrm{sim}}\right)
+\ \propto \
+p\!\left(y^{\textrm{sim}}, \theta^{\textrm{sim}}\right).
+$$
+This shows that $\theta^{\textrm{sim}}$ is just an ordinary draw from
+the posterior, $p\!\left(\theta \mid y^{\textrm{sim}}\right).$
+
+
+## Step 2: Sample from the posterior
+
+Next, we use the software being tested to take a sequence of $M$
+draws from the posterior given the simulated data,
+$$
+\theta^{(1)}, \ldots, \theta^{(M)}
+\ \sim \
+p\!\left(\theta \mid y^{\textrm{sim}}\right).
+$$
+
+## Step 3: Test calibration
+
+From the posterior $p\!\left(\theta \mid y^{\textrm{sim}}\right)$ we
+have a single draw $\theta^{\textrm{sim}}$ and a series of draws
+$\theta^{(1)}, \ldots, \theta^{(M)}$ we would like to test.  Because
+$\theta^{\textrm{sim}}$ is a random draw from the posterior just like
+all of the $\theta^{(M)}$, we know that it should have a uniform
+distribution in rank among the $\theta^{(M)}.$
+
+This is the hypothesis we are going to test.  We will simulate
+multiple data sets $\left(y^{\textrm{sim}(n)},
+\theta^{\textrm{sim}(n)}\right)$ and for each take $M$ draws from the
+posterior,
+$$
+\theta^{(n, m)}
+\sim
+p\!\left(\theta \mid y^{\textrm{sim}(n)}\right).
+$$
+
+For each such simulted data set, we will compute the rank of
+$\theta^{\textrm{sim}(n)}$ in $\theta^{(1,m)}, \ldots, \theta^{(N,
+m)},$^[For example, $\textrm{rank}(4, (5, 1, 6, 7)) = 2$ because there
+is one numer in the sequence $(5, 1, 6, 7)$ that is less than 4.]
+$$
+r_n
+\ = \
+\textrm{rank}\left(
+\theta^{\textrm{sim}(n)},
+\left( \theta^{(1,m)}, \ldots, \theta^{(N, m)} \right)
+\right).
+$$
+
+We then test that the sequence of ranks, $r = r_1, \ldots, r_N$ has a
+$\textrm{discrete_uniform}(1, M)$ distribution.  We can do this in
+any number of ways, but for simplicitly, we're going to test it using
+a simple $\chi^2$ test on binnned values.
+
+If $\theta$ is multivariate, this procedure should be carried out for
+each component of $\theta = \left( \theta_1, \ldots, \theta_k
+\right).$
+
+
+# Coding Simulation-Based Calibration in Stan
+
+We will use a single Stan program to generate $\theta^{\textrm{sim}},
+y^{\textrm{sim}}$ as transformed data, then fit the model, then use
+generated quantities to record whether the parameter (at a given
+iteration) is greater or less than the simulated value.  For each
+Markov chain, we then compute the sum of the indicator to give us the
+rank.
+
+## The model
+
+We will be testing a very simple model that estimates a normal
+location parameter $\mu \in (-\infty, \infty)$ and scale parameter
+$\sigma \in (0, \infty).$^[Thus we have $\theta = (\mu, \sigma)$ in
+the notation of the previous section.]  These get the following
+independent priors.
+$$
+\begin{array}{rcl}
+\mu & \sim & \textrm{normal}(0, 1)
+\\
+\sigma & \sim & \textrm{lognormal}(0, 1).
+\end{array}
+$$
+The prior density is thus
+$$
+p(\mu, \sigma)
+\ = \
+\textrm{normal}(\mu \mid 0, 1)
+\cdot
+\textrm{lognormal}(\sigma \mid 0, 1).
+$$
+We assume that the data consists of a vector $y = y_1, \ldots,
+y_{10},$ each element of which is generated independently according to
+$$
+y_n \sim \textrm{normal}(\mu, \sigma).
+$$
+Thus our likelihood is
+$$
+p(y \mid \mu, \sigma)
+\ = \
+\prod_{n=1}^{10} \textrm{normal}(y_n \mid \mu, \sigma).
+$$
+
+
+## Stan program
+
+Here's the complete Stan program implementing the model defined in the
+previous section.
+
+```{r, echo = FALSE}
+print_file('normal-sbc.stan')
+```
+
+Let's walk through it line by line.  First, there is no `data` block,
+so no external data needs to be provided to the program to run.  It
+defines both constant sizes and the simulated parameters and data in
+the `transformed data` block.  These values are defined either as
+constants (like the number of data points `N`) or using random number
+generators (as in the simulated parameters `mu_sim` and `sigma_sim`
+and the simulated data `y_sim`).
+
+The first statement draws a random value for `mu_sim` from a standard
+normal distribution using Stan's random number generation
+capabilities.   The second statement draws a positive random variable
+from a standard lognormal distribution.  This provides our values for
+our simulated parameters,
+$$
+\theta^{\textrm{sim}}
+\ = \
+\left( \mu^{\textrm{sim}}, \sigma^{\textrm{sim}} \right).
+$$
+Next, we declare a non-negative integer variable `N` and define it to
+have the vaue 10.  That will determine the size of the simulated data
+vector
+$$
+y^{\textrm{sim}}
+\ = \
+\left( y^{\textrm{sim}}_1, \ldots, y^{\textrm{sim}}_{N} \right).
+$$
+Finally, we have a loop to generate the $y^{\textrm{sim}}_n$ values
+independently according to a normal distribution with location
+$\mu^{\textrm{sim}}$ and scale $\sigma^{\textrm{sim}}.$
+
+Next up, we delcare the two scalar parameters, `mu` and `sigma`, for
+the model we are going to fit in the `parameters` block.  The variable
+`sigma` ,ist be defined with the lower bound of zero, as it is
+required to be positive.^[If it were not constrained, Stan would try
+to explore negative values for it.  When values are constrained to be
+positive, Stan will transform the geometry of the space it explores in
+order to restrict its attention to positive values.]
+
+The first two sampling statements in the `model` block define the
+prior, $p(\mu, \sigma) = p(\mu) \cdot p(\sigma)$.  The last statement
+defines the likelihood, $p(y^{\textrm{sim}} \mid \mu, \sigma).$
+This means that Stan's going to draw posterior samples according to
+$$
+\left( \mu^{(1)},\sigma^{(1)} \right),
+\ldots
+\left( \mu^{(M)},\sigma^{(M)} \right)
+\sim
+p\left(\mu, \sigma \mid y^{\textrm{sim}} \right),
+$$
+which is what we need for simulation-based calibration.  The sample is
+based on the posterior for the simualted data $y^{\textrm{sim}}.$
+
+Finally, the `generated quantities` block declares and defines an
+integer array `I_lt_sim` of boolean values.  The name is because they
+are the result of applying the indicator function to the test that the
+simulated data was less than a simulated parameter value.  The test
+in our example program returns an array with two values, the first
+entry of which is an indicator of whether $\mu < \mu^{\textrm{sim}}$
+and the second and indicator of whether $\sigma <
+\sigma^{\textrm{sim}}.$^[We conventionally order these in the same
+order as the parameters were declared to make it easy to read them out
+in order downstream.]
+
+In general, if we have a posterior draw $\theta^{(m)},$ the value for
+$k$-th entry of $\mathrm{I_lt_sim}^{(m)}$ will be
+$$
+\mathrm{I_lt_sim}^{(m)}_k
+\ = \
+\mathrm{I}\left[
+\theta^{(m)}_k < \theta_k^{\textrm{sim}}
+\right].
+$$
+
+In our example program, let's suppose our simulated parameters turn
+out to be
+$$
+(\mu^{\textrm{sim}}, \sigma^{\textrm{sim}})
+\ = \
+(1.01, 0.23).
+$$
+Suppose we then take $M = 4$ simulations to produce
+$$
+\begin{array}{r|rr}
+m & \mu & \sigma \\ \hline
+1 & 1.07 & 0.33 \\
+2 & -0.32 & 0.14 \\
+3 & -0.99 & 0.26 \\
+4 & 1.51 & 0.31 \\
+\end{array}
+$$
+Then the value of $\textrm{I_lt_sim}$ will be the following table,
+$$
+\begin{array}{r|rr}
+  & \mu^{(m)} < \mu^{\textrm{sim}} &
+    \sigma^{(m)} < \sigma^{\textrm{sim}}
+\\[4pt]
+m & \textrm{I_lt_sim}_1 & \textrm{I_lt_sim}_2
+\\[4pt] \hline
+1 & 0 & 0 \\
+2 & 1 & 1 \\
+3 & 1 & 0 \\
+4 & 0 & 0
+\end{array}
+$$
+In two of the three posterior draws, $\mu^{(m)} < \mu^{\textrm{sim}}$ and
+in one of the posterior draws, $\sigma^{(m)} < \sigma^{\textrm{sim}}.$
+These totals are just the sums of the columns.  To get final ranks
+numbered from one, we will add one to these sums (which may be zero).
+
+The number of possible ranks for the simulated parameters is one larger
+than the number of posterior parameter draws.  For example, if we have
+five posterior draws $\mu^{(1)}, \ldots, \mu^{(5)}$ for the location
+parameter, the rank of the simulated parameter $\mu^{\textrm{sim}}$
+can be as low as 0 if it's smaller than all of the $\mu^{(m)}$ and as
+high as 5 if it's larger than all of the $\mu^{(m)}$.^[This is called
+the "fencepost" problem in introductory computer science classes,
+where the analogy is that if there are $n$ fence posts, there are $n -
+1$ connecting bits of fence.  Failure to adjust for this discrepancy
+in counts between posts and fence units is the cause of numerous
+off-by-one errors in computer programs.]   We add one to the raw
+counts (which range from zero the number of draws) to get ranks
+numbering from one to the number of draws plus one.
+
+## Testing uniformity of ranks
+
+We're going to apply a simple $\chi^2$ test to the ranks by binning
+them.  We will divide the ranks into 20 bins.^[This assumes the number
+of ranks is divisible by 20 to ensure uniformity; converting to
+floating point does not solve this problem, as we only have a discrete
+number of possible ranks as output.]
+
+Because the number of ranks is one greater than the number of
+simulations, we will use 999 simulations to get an evenly divisble
+1000 possible ranks.  Also, to make our life easier in R, we will
+number the ranks `1:1000` rather than `0:999`.
+
+The counts in each bin will follow a uniform distribution under
+the null hypothesis of calibration.  Therefore the squared difference
+from the expected count of each bin will follow a $\chi^2$
+distribution and we can employ the standard hypothesis test for
+uniformity.
+
+## Testing uniformity in R
+
+To implement our uniformity test in R, we use
+
+```{r}
+# @param y:  sequence of ranks in 1:max_rank
+# @param max_rank: maximum rank of data in y
+# @param bins (default 20):  bins to use for chi-square test
+# @error return NA if max rank not divisible by number of bins
+# @return p-value for chi-square test that data is evenly
+#         distributed among the bins
+test_uniform_ranks <- function(y, max_rank, bins = 20) {
+  if (max_rank / bins != floor(max_rank / bins)) {
+     printf("ERROR in test_uniform_ranks")
+     printf("  max rank must be divisible by bins.")
+     printf("  found max rank = %d;  bins = %d", max_rank, bins)
+     return(NA)
+  }
+  bin_size <- max_rank / bins
+  bin_count <- rep(0, bins)
+  N <- length(y)
+  for (n in 1:N) {
+    bin <- ceiling(y[n] / bin_size)
+    bin_count[bin] <- bin_count[bin] + 1
+  }
+  chisq.test(bin_count)$p.value
+}
+```
+
+As input, this function takes the sequence `y` of ranks to evaluate
+for uniformity, the maximum possible rank, and the number of bins to
+use (defaulting to 20).  After checking consistency, it just iterates
+through the elements of `y` incrementing the appropriate bin.  This
+can be done with a simple rounded integer division as shown.  If the
+number of ranks is divisible by the number of bins, we expect each bin
+to have the same number of elements.  Finally, the built-in
+`chisq.test` of R is used and its $p$-value returned.^[We could refine
+this function to deal with uneven bin sizes by adding a parameter to
+the `chisq.test` call that indicates the expected probability of
+inclusion in each bin.]
+
+
+
+## R function for simulation-based calibration of Stan programs
+
+Given the Stan program to do the heavy lifting of fitting, we can
+write a simple R driver program to calculate all we need for
+simulation-based calibration (assuming a Stan program defining the
+appropriate test variables).  Let's first include the Stan library and
+print.
+
+Then we have the `sbc` function itself, which needs the include of `rstan.`
+
+
+```{r}
+# @param model: precompiled Stan model
+# @param data: data for model (defaults to empty list)
+# @return size of the generated quantity array I_lt_sim
+num_monitored_params <-
+  function(model, data = list()) {
+    fit <- sampling(model, data = data,
+                    iter = 1, chains = 1, warmup = 0,
+                    refresh = 0, seed = 1234)
+    fit@par_dims$I_lt_sim
+  }
+```
+
+```{r}
+# @param model: precompiled Stan model
+# @param data: list of data for model (defaults to empty)
+# @param sbc_sims:  number of total simulation runs for SBC
+# @param stan_sims: number of posterior draws per Stan simulation
+# @param init_thin: initial thinning (doubles thereafter up to max)
+# @param max_thin: max thinning level
+# @param seed: PRNG seed to use for Stan program to generate data
+# @param target_n_eff: target effective sample size (should be 80%
+#                      or 90% of stan_sims to stand a chance)
+# @return list with keys (rank, p_value, tin) for 2D array of ranks
+#         and 1D array of p-values, and 1D array of thinning rates
+sbc <- function(model, data = list(),
+                sbc_sims = 1000, stan_sims = 999,
+                init_thin = 4, max_thin = 64,
+                target_n_eff = 0.8 * stan_sims,
+		seed = sample(1e6, size = 1)) {
+  num_params <- num_monitored_params(model, data)
+  ranks <- matrix(nrow = sbc_sims, ncol = num_params)
+  thins <- rep(NA, sbc_sims)
+  for (n in 1:sbc_sims) {
+    n_eff <- 0
+    thin <- init_thin
+    while (TRUE) {
+      fit <- sampling(model, data = data,
+                      seed = seed, chain_id = n,
+                      control = list(adapt_delta = 0.99),
+                      iter = 2 * thin * stan_sims,
+                      refresh = 0)
+      fit_summary <- summary(fit, pars = c("lp__"), probs = c())$summary
+      n_eff <- fit_summary["lp__", "n_eff"]
+      if (n_eff >= target_n_eff || (2 * thin) > max_thin) break;
+      thin <- 2 * thin
+    }
+    thins[n] <- thin
+    # printf("n = %5d;  thin = %4d;  n_eff = %5.0f", n, thin, n_eff)
+    lt_sim <- extract(fit)$I_lt_sim
+    for (i in 1:num_params)
+      ranks[n, i] <- sum(lt_sim[ , i]) + 1
+  }
+  pval <- rep(NA, num_params)
+  for (i in 1:num_params)
+    pval[i] <- test_uniform_ranks(ranks[ , i],
+                                  max_rank = stan_sims + 1)
+  list(rank = ranks, p_value = pval, thin = thins)
+}
+```
+
+The `sbc` function takes a number of arguments as documented before
+its definition.  These include a precompiled Stan model^[As produced
+from a Stan program in a file `model_file` by
+`rstan::stan_model(model_file).`], any data required by that model
+(defaulting to an empty list for models that require no external
+data), a number of total simulations for SBC and a total number of
+posterior draws per simulation for Stan.  Additional arguments control
+the initial thinning rate, the maximum thinning rate, and the target
+effective sample size.  The thinning rate will start at the initial
+value and be increased until we get at least the target effective
+sample size or exceed the maximum thinning rate.
+
+Before doing anything else, the program calls `num_monitored_params`
+to find out the size of the the indicator array so it can preallocate
+the matrix of ranks produced by sampling.
+
+The `sbc()` function then iterates over the number of SBC simulations,
+and for each one simulates a data set then fits it with Stan.^[The
+simulation is also in the Stan program.]  We need to make sure that
+effective sample size is large enough to remove correlation from the
+posterior draws or they will fail the uniformity test.  So what we do
+is introduce a pattern known as *iterative deepening* in the
+programming literature.  We start with a guess of hwo much thinning we
+will need, run with that amount of thinning, test our effective sample
+size, and retry with more thinning if it is not large enough.
+
+We will be using the effective sample size for `lp__`, the log density
+(up to an additive normalizing constant).  This is a non-linear
+function of all of the parameters and if it mixes well, the parameters
+typically mix well.^[As the transform of a group of random variables,
+the log density is also a random variable in the posterior.  We could
+use it to compute the entropy of a distribution, for example, which is
+the expectation of a log density.]  A stricter test would be to
+require every parameter's estimated effective sample size to exceed
+some threshold; multiple parameters will make such a test even
+stricter.
+
+The call to the sampler uses the seed specified in the argument, with
+a chain id corresponding to the SBC iteration.  This will make sure
+each SBC iteration uses its own segment of a long sequence of
+pseudorandom number draws.^[Controlling the PRNGs in simulation
+programs is critical.  Often built-in seeds are time-based, which in
+computation-intensive situations can result in the same seed being
+reused, which defeats the assumption of independent testing.]
+
+To extract the effective sample size for `lp__`, we need to dive
+into the returned Stan fit object.^[RStan is distributed with a
+[vignette on the Stan fit object](
+https://cran.r-project.org/web/packages/rstan/vignettes/stanfit-objects.html).
+R uses the term "vignette" for documentation of how to use a package.]
+We extract the number of effective samples for the variable `lp__`,
+which represents the log density of the model at the sample being
+drawn (up to an additive normalizing constant).
+
+If the effective size is large enough, or if the maximum thinning rate
+will be exceeded in the next iteration, the algorithm breaks out of
+the loop.^[The `break` statement causes execution of a loop to
+terminate and execution to begin after the loop; it's useful when
+there are complicated termination conditions that are awkward to write
+in the loop's condition.]  Otherwise, the algorithm doubles the
+thinning rate and tries again.  The additional factor of two in the
+number of iterations is because half of the iterations go to warmup by
+default.  As it goes along, the program records the thinning rate in
+each iteration.
+
+When it has found a large enough estimated effective sample size for
+the SBC iteration (or fails by exceeding max thinning), it then
+extracts the value of the generated quantity `I_lt_sim`.  The value of
+`I_lt_sim[m, k]` is a binary indicator for posterior draw `m` and
+parameter `k` as to whether the posterior draw's value is less than
+the simulated value for the parameter.
+
+Then, for each parameter `k`, we sum the indicators `I_lt_sim[ , k]`
+to calculate the rank of the each simulated parameter among the
+posterior draws for that parameter.  Because we add one, the value
+will be between one and one plus the maximum number of Stan draws.
+With a default of 999 draws, the ranks should range uniformly from 1
+to 1000.
+
+With these ranks in hand, the `test_uniform_ranks` program calculates
+the $p$-value for each parameter.  The null hypotehsis is that the
+ranks of the simulated parameter value among the posterior draws will
+be uniform across multiple simulated parameters and data sets.  The
+maximum rank is calculated to be one more than the number of
+simulations.  The raw ranks run from 0 to the number of simulations,
+but we add 1 to those so that they run from 1 to the number of
+simulations plus 1 and divide evenly into bins using modulo
+arithmetic.^[These are all messing coding details that are important
+to get right so as not to induce a small bias into the
+calculations. Please double-check I did my calculations here correctly!]
+
+The program returns the raw ranks for each parameter for each SBC
+iteration, along with the p-values for each parameter and the thinning
+level used for each iteration.
+
+To run, we first have to compile the Stan program.
+
+```{r, results = 'hide'}
+model <- stan_model("normal-sbc.stan")
+```
+
+Then we can call the simulation-based calibration function.
+
+```{r}
+result <- sbc(model, data = list(), sbc_sims = 1000, stan_sims = 999,
+              max_thin = 64)
+```
+
+With 999 Stan simulations, there are 1000 possible ranks, so the bins
+will divide nice and evenly.  We can see the thinning levels actually
+used by summarizing them as a table.
+
+```{r}
+table(result$thin)
+```
+
+Finally, we print out the $p$-values for our uniformity test.
+
+```{r}
+result$p_value
+```
+
+Everything looks good.^[We'd be worried if those $p$-values were very small.]
+
+We can also plot histograms of the ranks.
+
+```{r, fig.cap = "Histogram of ranks of the simulated parameter value with respect to the posterior draws for the two model parameters.  If all is working as it should be, these should look uniform, which they do here."}
+
+A <- dim(result$rank)[1]
+rank_df <-
+  rbind(data.frame(parameter = rep("mu", A),
+                   y = result$rank[ , 1]),
+        data.frame(parameter = rep("sigma", A),
+                   y = result$rank[, 2]))
+rank_plot <-
+  ggplot(rank_df, aes(x = y)) +
+  geom_histogram(binwidth = 50, color = "black",
+                 fill = "#ffffe8", boundary = 0) +
+  facet_wrap(vars(parameter)) +
+  ggtheme_tufte() +
+  theme(panel.spacing.x = unit(2, "lines"))
+rank_plot
+```
+
+## When things go wrong
+
+Now let's see what happens when our model is misspecified for our data
+generating process.  To set this up, we'll use the same normal model,
+but rather than generating normal data, we'll generate
+Student-t-distributed data with four degrees of freedom.  We'll
+simulate $\mu^{\textrm{sim}}$ and $\sigma^{\textrm{sim}}$ as before
+(standard normal and standard lognormal) and generate the simulated
+$y^{\textrm{sim}}$ based on these as
+
+$$
+y^{\textrm{sim}}_n
+\sim
+\mathrm{student_t}(4, \mu, \sigma).
+$$
+
+Here's the full Stan code.
+
+```{r}
+print_file('bad-t-normal-sbc.stan')
+```
+
+Only a single line has changed in the code, with
+
+
+```
+    y_sim[n] = normal_rng(4, mu_sim, sigma_sim);
+```
+
+being replaced by
+
+```
+    y_sim[n] = student_t_rng(4, mu_sim, sigma_sim);
+```
+
+Now let's see what happens.  We need to compile the model, run SBC,
+and print the $p$-values.
+
+```{r, results = 'hide'}
+bad_model <- stan_model('bad-t-normal-sbc.stan')
+bad_result <- sbc(bad_model, data = list(),
+                  sbc_sims = 1000, stan_sims = 999,
+                  max_thin = 64)
+```
+
+```{r}
+bad_result$p_value
+```
+
+The resulting $p$-values show a clear failure of calibration, as we
+would expect.  Here are the histog
+
+```{r, fig.cap = "Histogram of ranks of the simulated parameter value with respect to the posterior draws for the two model parameters. Because the model is misspecified for the data generating process, we expect to see clear evidence of non-uniformity in the histograms."}
+
+bad_A <- dim(bad_result$rank)[1]
+bad_rank_df <-
+  rbind(data.frame(parameter = rep("mu", bad_A),
+                   y = bad_result$rank[ , 1]),
+        data.frame(parameter = rep("sigma", bad_A),
+                   y = bad_result$rank[, 2]))
+bad_rank_plot <-
+  ggplot(bad_rank_df, aes(x = y)) +
+  geom_histogram(binwidth = 50, color = "black",
+                 fill = "#ffffe8", boundary = 0) +
+  facet_wrap(vars(parameter)) +
+  ggtheme_tufte() +
+  theme(panel.spacing.x = unit(2, "lines"))
+bad_rank_plot
+```
+
+We see the problem immediately in that we are way off in estimating
+$\sigma$ in the posterior; which shows up directly in the small
+$p$-value.
+
+# Conclusion
+
+When we generate data from the true generating process of a model, we
+expect our sampling program to be able to sample from the posterior
+given the data.  Simulation-based calibration lets us test if our
+samplers are properly sampling from the posterior of a given model by
+testing simulated coverage.  This note shows how to code
+simulation-based calibration for a Stan model using an elaborated
+Stan model and how to drive such tests using RStan.
+
+## Acknowledgements
+
+Thanks to Lauren Kennedy for helping me with R data structures^[If you
+don't know `str()`, you should.  It's like magic.  I can finally use a
+Stan fit object without the vignette.].  And thanks to Jonah Gabry for
+the trick on using an integer array of comparison points to make the
+code more general;  he already had SBC implemented for Bayesplot on a
+branch before I wrote this case study.
+
+
+## Appendix: Included R code
+
+This all executes before other code, but is not included above to
+cluttering the document before it starts.  We need to import the following R libraries.
+
+```{r}
+library(ggplot2); library(knitr); library(rstan);  library(tufte)
+```
+
+We also have some general print utility functions.
+
+```{r}
+println <- function(msg) cat(msg); cat("\n")
+printf <- function(pattern, ...) println(sprintf(pattern, ...))
+print_file <- function(file) println(readLines(file))
+```
+
+We also have some general R configuration.
+
+```{r}
+options(digits = 2);  options(htmltools.dir.version = FALSE)
+```
+
+There's also configuration for knitr itself.
+
+```{r warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(
+  include = TRUE,  cache = FALSE,  collapse = TRUE,  echo = TRUE,
+  message = FALSE, tidy = FALSE,  warning = FALSE,   comment = "  ",
+  dev = "png",  dev.args = list(bg = '#FFFFF8'),  dpi = 300,
+  fig.align = "center",  fig.width = 7,  fig.asp = 0.618,  fig.show = "hold",
+  out.width = "90%")
+```
+
+And finally, configuration for the theme we use to match the Tufte
+handout format for R markdown.
+
+```{r}
+ggtheme_tufte <- function() {
+  theme(plot.background =
+          element_rect(fill = "#fffff8",
+                       colour = "#fffff8",
+                       size = 0.5,
+                       linetype = "solid"),
+        plot.margin=unit(c(1, 1, 0.5, 0.5), "lines"),
+        panel.background =
+          element_rect(fill = "#fffff8",
+                       colour = "#fffff8",
+                       size = 0.5,
+                       linetype = "solid"),
+        panel.grid.major = element_line(colour = "white",
+                                        size = 1, linetype="dashed"),
+        panel.grid.minor = element_blank(),
+        legend.box.background =
+          element_rect(fill = "#fffff8",
+                       colour = "#fffff8",
+                       linetype = "solid"),
+        axis.ticks = element_blank(),
+        axis.text = element_text(family = "Palatino", size = 14),
+        axis.title.x = element_text(family = "Palatino", size = 16,
+                                    margin = margin(t = 15,
+                                                    r = 0, b = 0, l = 0)),
+        axis.title.y = element_text(family = "Palatino", size = 16,
+                                    margin = margin(t = 0,
+                                                    r = 15, b = 0, l = 0)),
+        strip.background = element_rect(fill = "#fffff8",
+                                        colour = "#fffff8",
+                                        linetype = "solid"),
+        strip.text = element_text(family = "Palatino", size = 14),
+        legend.text = element_text(family = "Palatino", size = 14),
+        legend.title = element_text(family = "Palatino", size = 16,
+                                    margin = margin(b = 5)),
+        legend.background = element_rect(fill = "#fffff8",
+                                        colour = "#fffff8",
+                                        linetype = "solid"),
+        legend.key = element_rect(fill = "#fffff8",
+                                        colour = "#fffff8",
+                                        linetype = "solid")
+  )
+}
+```
+
+## Appendix: Session information
+
+```{r}
+sessionInfo()
+```
