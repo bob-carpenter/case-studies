@@ -20,7 +20,7 @@ print_file <- function(file) cat(paste(readLines(file), "\n", sep=""), sep="")
 knitr::opts_chunk$set(
   include = TRUE,  cache = FALSE,  collapse = TRUE,  echo = TRUE,
   message = FALSE, tidy = FALSE,  warning = FALSE,   comment = "  ",
-  dev = "png",  dev.args = list(bg = '#FFFFF8'),  dpi = 300,
+  dev = "png", dev.args = list(bg = '#FFFFF8'), dpi = 300,
   fig.align = "center",  fig.width = 7,  fig.asp = 0.618,  fig.show = "hold",
   out.width = "90%")
 
@@ -100,15 +100,13 @@ $$
 \begin{array}{rcl}
 p(\theta \mid y)
 & = &
-\frac{\displaystyle p(y \mid \theta) \cdot p(\theta)}
-     {\displaystyle p(y)}
-\\[4pt]
-& \propto
-\\[8pt]
-& = &
-\underbrace{p(\theta)}
+\frac{p(y \mid \theta) \cdot p(\theta)}
+     {p(y)}
+\\[12pt]
+& \propto &
+p(y \mid \theta)
 \cdot
-\underbrace{p(y \mid \theta)}.
+p(\theta)
 \end{array}
 $$
 That is, the posterior $p(\theta \mid y)$ is proportional to the prior
@@ -122,7 +120,6 @@ the posterior distribution,
 $$
 \theta^{(1)}, \ldots, \theta^{(M)} \sim p(\theta \mid y).
 $$
-
 Samples are useful in that they allow us to calculate integrals
 corresponding to conditional expectations,
 $$
@@ -131,13 +128,24 @@ $$
 \int f(\theta) \cdot p(\theta \mid y) \, \textrm{d}\theta.
 $$
 These allow us to compute posterior means as conditional expectations
-of parameters,^[$\hat{\mu} = \mathbb{E}\left[\mu \mid y\right].$]
+of parameters,
+$$
+\hat{\mu} = \mathbb{E}\left[\mu \mid y \right],
+$$
 event probabilities as conditional expectations of indicator
-functions,^[$\mathbb{Pr}[\theta_1 > \theta_2 \mid y] \ = \
-\mathbb{E}\left[\textrm{I}[\theta_1 > \theta_2] \mid y\right].$] and
+functions,
+$$
+\mathbb{Pr} [ \theta_1 > \theta_2 \mid y ] \ = \
+\mathbb{E} \left[ \textrm{I}[ \theta_1 > \theta_2 ] \mid y \right],
+$$
+and
 posterior predictive distributions of new observations as conditional
-expectations of sampling densities.^[$p(\tilde{y} \mid y) \ = \
-\mathbb{E}\left[p(\tilde{y} \mid \theta) \mid y\right].$] The
+expectations of sampling densities,
+$$
+p(\tilde{y} \mid y) \ = \
+\mathbb{E}\left[p(\tilde{y} \mid \theta) \mid y\right].
+$$
+The
 conditioning in all cases is on observed data $y$ and the expectations
 are thus taken with respect to the posterior distribution of $\theta$
 conditioned on $y.$
@@ -232,7 +240,7 @@ r_n
 $$
 
 We then test that the sequence of ranks, $r = r_1, \ldots, r_N$ has a
-$\textrm{discrete_uniform}(1, M + 1)$ distribution.  We can do this in
+$\textrm{discrete\_uniform}(1, M + 1)$ distribution.  We can do this in
 any number of ways, but for simplicity, we're going to test it using
 a simple $\chi^2$ test on binned values.
 
@@ -371,9 +379,9 @@ conventionally order these in the same order as the parameters were
 declared to make it easy to read them out in order downstream.]
 
 In general, if we have a posterior draw $\theta^{(m)},$ the value for
-$k$-th entry of $\textrm{I_lt_sim}^{(m)}$ will be
+$k$-th entry of $\textrm{I\_lt\_sim}^{(m)}$ will be
 $$
-\textrm{I_lt_sim}^{(m)}_k
+\textrm{I\_lt\_sim}^{(m)}_k
 \ = \
 \textrm{I}\!\left[
 \theta^{(m)}_k < \theta_k^{\textrm{sim}}
@@ -397,7 +405,7 @@ m & \mu^{(m)} & \sigma^{(m)} \\ \hline
 4 & 1.51 & 0.31 \\
 \end{array}
 $$
-Then the value of $\textrm{I_lt_sim}$ will be an array with four rows
+Then the value of $\textrm{I\_lt\_sim}$ will be an array with four rows
 and two columns,
 $$
 \begin{array}{c|cc}
@@ -755,7 +763,7 @@ $y^{\textrm{sim}}$ based on these as
 $$
 y^{\textrm{sim}}_n
 \sim
-\textrm{student_t}(4, \mu, \sigma).
+\textrm{student\_t}(4, \mu, \sigma).
 $$
 
 Here's the full Stan code.
