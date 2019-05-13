@@ -1,5 +1,5 @@
 ---
-title: "Simulation-Based Calibration with Stan"
+title: "Simulation-Based Calibration with Stan and RStan"
 author: "Bob Carpenter"
 date: "May 2019"
 output:
@@ -68,53 +68,56 @@ ggtheme_tufte <- function() {
 }
 ```
 
-## Why simulation-based calibration?
+# Why simulation-based calibration?
 
-Simulation-based calibration (SBC) is a method to asses the ability of
-a software implementation of a sampler to sample from a given Bayesian
-posterior density.^[The method was originally developed in
-Cook, S. R., Gelman, A., & Rubin, D. B. (2006). <a
-href="(https://www.tandfonline.com/doi/pdf/10.1198/106186006X136976">Validation
+Simulation-based calibration (SBC) is a generally applicable method to
+asses the soundness of an implementation of a Bayesian model and
+posterior sampler.^[The method was originally developed in Cook,
+S. R., Gelman, A., & Rubin, D. B. (2006). <a
+href="https://www.tandfonline.com/doi/pdf/10.1198/106186006X136976">Validation
 of software for Bayesian models using posterior
-quantiles</a>). *Journal of Computational and Graphical Statistics,*
-15(3), 675-692.
-<br />
-The refinement implemented here is from Talts,
+quantiles</a>. *Journal of Computational and Graphical Statistics,*
+15(3), 675-692.  <br /> The refinement implemented here is from Talts,
 S., Betancourt, M., Simpson, D., Vehtari, A., & Gelman, A. (2018). <a
 href="https://arxiv.org/pdf/1804.06788">Validating Bayesian inference
-algorithms with simulation-based calibration).</a> *arXiv* 1804.06788.
-</quote>
-]
-Well-specified Bayesian models are calibrated by construction. That
-is, the posterior intervals will have proper frequentist coverage *if
-the model is correct.*^[Models are typicaly not correct, which is why
-we always apply posterior predictive checks.]  We can use
-this insight to validate that our software is sampling from the
-appropriate posterior by testing the software's calibration.
-
+algorithms with simulation-based calibration.</a> *arXiv* 1804.06788.
+</quote> ] Well-specified Bayesian models are calibrated by
+construction. That is, the posterior intervals will have proper
+frequentist coverage *if the model is correct.*^[Models are typically
+not correct, which is why we always need to apply posterior predictive
+checks to assess the fit of real data; simulation-based calibration
+only assesses the algorithm and model implementation, not its fit to
+real data.]  Simulation-based calibration uses this property of
+Bayesian models to define a testing procedure for Bayesian posterior
+samplers.
 
 # Bayesian posteriors
 
 Simulation-based calibration relies on the standard application of Bayes's
-rule^[The posterior density is proportional to joint density.] and the
-standard factoring of the joint density.^[The joint density is
-proportional to the prior times the likelihood.]
+rule and the standard factoring of the joint density.  Given a fixed
+data set $y$, Bayes's rule tells us that
 $$
 \begin{array}{rcl}
-\underbrace{p(\theta \mid y)}_{\textrm{posterior}}
-& \propto &
-\underbrace{p(y, \theta)}_{\textrm{joint}}
+p(\theta \mid y)
+& = &
+\frac{\displaystyle p(y \mid \theta) \cdot p(\theta)}
+     {\displaystyle p(y)}
+\\[4pt]
+& \propto
 \\[8pt]
 & = &
-\underbrace{p(\theta)}_{\textrm{prior}}
+\underbrace{p(\theta)}
 \cdot
-\underbrace{p(y \mid \theta)}_{\textrm{likelihood}}.
+\underbrace{p(y \mid \theta)}.
 \end{array}
 $$
+That is, the posterior $p(\theta \mid y)$ is proportional to the prior
+$p(\theta)$ times the likelihood $p(y \mid \theta).$
+
 
 ## Simulation-based inference
 
-A sampler is able to take a sequence of draws distributed according to
+A sampler provides a sequence of draws distributed according to
 the posterior distribution,
 $$
 \theta^{(1)}, \ldots, \theta^{(M)} \sim p(\theta \mid y).
@@ -125,24 +128,41 @@ corresponding to conditional expectations,
 $$
 \mathbb{E}[f(\theta) \mid y]
 \ = \
-\int f(\theta) \cdot p(\theta \mid y) \, \mathrm{d}\theta.
+\int f(\theta) \cdot p(\theta \mid y) \, \textrm{d}\theta.
 $$
+These allow us to compute posterior means as conditional expectations
+of parameters,^[$\hat{\mu} = \mathbb{E}\left[\mu \mid y\right].$]
+event probabilities as conditional expectations of indicator
+functions,^[$\mathbb{Pr}[\theta_1 > \theta_2 \mid y] \ = \
+\mathbb{E}\left[\textrm{I}[\theta_1 > \theta_2] \mid y\right].$] and
+posterior predictive distributions of new observations as conditional
+expectations of sampling densities.^[$p(\tilde{y} \mid y) \ = \
+\mathbb{E}\left[p(\tilde{y} \mid \theta) \mid y\right].$] The
+conditioning in all cases is on observed data $y$ and the expectations
+are thus taken with respect to the posterior distribution of $\theta$
+conditioned on $y.$
 
 
 # Simulation-based Calibration
 
+Simulation-based calibration proceeds by following the generative
+story of the model and the standard procedure of posterior inference.
+
 ## Step 1: Simulate from the generative model
 
-Simulation-based calibration proceeds by following the generative
-story of the model.  It first simulates the value of the parameters
+The first step is to simulate the value of the parameters
 according to the prior,
 $$
 \theta^{\textrm{sim}}
 \sim
 p(\theta).
 $$
-Next, it simulates data from the likelihood based on the simulated
-parameter values,
+Next, it simulates data from the sampling distribution based on the
+simulated parameter values,^[The distribution $p(y \mid \theta)$ is
+called the likelihood when considered as a function of the parameters
+$\theta$ for fixed data $y,$ and called the sampling distribution when
+considered as a function of the variable $y$ for fixed parameters
+$\theta.$]
 $$
 y^{\textrm{sim}}
 \sim
@@ -156,7 +176,8 @@ p\!\left(\theta^{\textrm{sim}} \mid y^{\textrm{sim}}\right)
 \ \propto \
 p\!\left(y^{\textrm{sim}}, \theta^{\textrm{sim}}\right).
 $$
-This shows that $\theta^{\textrm{sim}}$ is just an ordinary draw from
+This is the key insight behind simulation-based calibration---that
+$\theta^{\textrm{sim}}$ is just an ordinary draw from
 the posterior, $p\!\left(\theta \mid y^{\textrm{sim}}\right).$
 
 
@@ -176,64 +197,88 @@ From the posterior $p\!\left(\theta \mid y^{\textrm{sim}}\right)$ we
 have a single draw $\theta^{\textrm{sim}}$ and a series of draws
 $\theta^{(1)}, \ldots, \theta^{(M)}$ we would like to test.  Because
 $\theta^{\textrm{sim}}$ is a random draw from the posterior just like
-all of the $\theta^{(M)}$, we know that it should have a uniform
-distribution in rank among the $\theta^{(M)}.$
+all of the $\theta^{(m)}$, we know that it should have a uniform
+distribution in rank when considered among the $\theta^{(1)}, \ldots,
+\theta^{(M)}.$
 
 This is the hypothesis we are going to test.  We will simulate
 multiple data sets $\left(y^{\textrm{sim}(n)},
-\theta^{\textrm{sim}(n)}\right)$ and for each take $M$ draws from the
-posterior,
+\theta^{\textrm{sim}(n)}\right)$ for $n in 1:N$ and for each take $M$
+draws from the posterior,
 $$
 \theta^{(n, m)}
 \sim
 p\!\left(\theta \mid y^{\textrm{sim}(n)}\right).
 $$
 
-For each such simulted data set, we will compute the rank of
+For each such simulated data set, we will compute the rank of
 $\theta^{\textrm{sim}(n)}$ in $\theta^{(1,m)}, \ldots, \theta^{(N,
 m)},$^[For example, $\textrm{rank}(4, (5, 1, 6, 7)) = 2$ because there
-is one numer in the sequence $(5, 1, 6, 7)$ that is less than 4.]
+is one numer in the sequence $(5, 1, 6, 7)$ that is less than 4.  This
+operation can also be done by adding the value 4 to the sequence and
+recovering its usual rank.]
 $$
+\begin{array}{rcl}
 r_n
-\ = \
+& = &
 \textrm{rank}\left(
 \theta^{\textrm{sim}(n)},
-\left( \theta^{(1,m)}, \ldots, \theta^{(N, m)} \right)
-\right).
+\left( \theta^{(n,1)}, \ldots, \theta^{(n, M)} \right)
+\right)
+\\[6pt]
+& = & 1 + \sum_{m=1}^M \textrm{I}\left[\theta^{(n,m)} <
+\theta^{\textrm{sim}(n)}\right]
+\end{array}
 $$
 
 We then test that the sequence of ranks, $r = r_1, \ldots, r_N$ has a
-$\textrm{discrete_uniform}(1, M)$ distribution.  We can do this in
-any number of ways, but for simplicitly, we're going to test it using
-a simple $\chi^2$ test on binnned values.
+$\textrm{discrete_uniform}(1, M + 1)$ distribution.  We can do this in
+any number of ways, but for simplicity, we're going to test it using
+a simple $\chi^2$ test on binned values.
 
-If $\theta$ is multivariate, this procedure should be carried out for
-each component of $\theta = \left( \theta_1, \ldots, \theta_k
-\right).$
+# Application:  Continuous integration testing
+
+Our intended application for these tests is continuous integration
+testing for Stan.^[Continuous integration (CI) tests that nothing
+breaks when the software is changed.]  We thus need to automate
+testing for uniformity.^[We can't just follow the advice of Talts et
+al. and eyeball thousands of histograms every time someone merges a
+change to Stan!]
+
+If $\theta$ is multivariate, the entire SBC procedure should be
+carried out for each component of $\theta = \left( \theta_1, \ldots,
+\theta_k \right).$ To control false positive rates in an automated
+test framework, we need to adjust the warning thresholds for multiple
+comparisons.^[A more sophisticated approach would be to use a
+multivariate test for uniformity in order to intrinsically adjust for
+the multiple comparisons.]
+
 
 
 # Coding Simulation-Based Calibration in Stan
 
-We will use a single Stan program to generate $\theta^{\textrm{sim}},
-y^{\textrm{sim}}$ as transformed data, then fit the model, then use
-generated quantities to record whether the parameter (at a given
-iteration) is greater or less than the simulated value.  For each
-Markov chain, we then compute the sum of the indicator to give us the
-rank.
+For a given model, we can code up the entire simulation-based
+calibration procedure in a single Stan program.  This includes
+simulating parameters and data in the transformed data block, defining
+the posterior to be sampled in the parameters and model blocks, and
+then defining the indicator function $\textrm{I}[\theta^{(m)} <
+\theta^{\textrm{sim}}$ as a generated quantity.  Sampling from the
+posterior of this model in Stan allows us to compute ranks by summing
+the indicator over the $M$ draws.
 
 ## The model
 
 We will be testing a very simple model that estimates a normal
 location parameter $\mu \in (-\infty, \infty)$ and scale parameter
 $\sigma \in (0, \infty).$^[Thus we have $\theta = (\mu, \sigma)$ in
-the notation of the previous section.]  These get the following
-independent priors.
+the notation of the previous section.]  We will use the
+independent priors
 $$
-\begin{array}{rcl}
-\mu & \sim & \textrm{normal}(0, 1)
-\\
-\sigma & \sim & \textrm{lognormal}(0, 1).
-\end{array}
+\mu  \sim  \textrm{normal}(0, 1)
+$$
+and
+$$
+\sigma \sim \textrm{lognormal}(0, 1).
 $$
 The prior density is thus
 $$
@@ -265,13 +310,11 @@ previous section.
 print_file('normal-sbc.stan')
 ```
 
-Let's walk through it line by line.  First, there is no `data` block,
-so no external data needs to be provided to the program to run.  It
-defines both constant sizes and the simulated parameters and data in
-the `transformed data` block.  These values are defined either as
-constants (like the number of data points `N`) or using random number
-generators (as in the simulated parameters `mu_sim` and `sigma_sim`
-and the simulated data `y_sim`).
+Let's walk through the program line by line.  First, there is no
+`data` block, so no external data needs to be provided to the program
+to run.  It defines constant size variables (`N`) by assignment and
+uses random number generators to define the simulated parameters
+(`mu_sim`, `sigma_sim`), and the simulated data (`y_sim`).
 
 The first statement draws a random value for `mu_sim` from a standard
 normal distribution using Stan's random number generation
@@ -284,7 +327,7 @@ $$
 \left( \mu^{\textrm{sim}}, \sigma^{\textrm{sim}} \right).
 $$
 Next, we declare a non-negative integer variable `N` and define it to
-have the vaue 10.  That will determine the size of the simulated data
+have the value 10.  That will determine the size of the simulated data
 vector
 $$
 y^{\textrm{sim}}
@@ -295,9 +338,9 @@ Finally, we have a loop to generate the $y^{\textrm{sim}}_n$ values
 independently according to a normal distribution with location
 $\mu^{\textrm{sim}}$ and scale $\sigma^{\textrm{sim}}.$
 
-Next up, we delcare the two scalar parameters, `mu` and `sigma`, for
+Next up, we declare the two scalar parameters, `mu` and `sigma`, for
 the model we are going to fit in the `parameters` block.  The variable
-`sigma` ,ist be defined with the lower bound of zero, as it is
+`sigma` must be defined with the lower bound of zero, as it is
 required to be positive.^[If it were not constrained, Stan would try
 to explore negative values for it.  When values are constrained to be
 positive, Stan will transform the geometry of the space it explores in
@@ -315,25 +358,24 @@ $$
 p\left(\mu, \sigma \mid y^{\textrm{sim}} \right),
 $$
 which is what we need for simulation-based calibration.  The sample is
-based on the posterior for the simualted data $y^{\textrm{sim}}.$
+based on the posterior for the simulated data $y^{\textrm{sim}}.$
 
 Finally, the `generated quantities` block declares and defines an
-integer array `I_lt_sim` of boolean values.  The name is because they
-are the result of applying the indicator function to the test that the
-simulated data was less than a simulated parameter value.  The test
-in our example program returns an array with two values, the first
-entry of which is an indicator of whether $\mu < \mu^{\textrm{sim}}$
-and the second and indicator of whether $\sigma <
-\sigma^{\textrm{sim}}.$^[We conventionally order these in the same
-order as the parameters were declared to make it easy to read them out
-in order downstream.]
+integer array `I_lt_sim` of boolean values.  The name follows the
+definition of applying the indicator function to the test that the
+simulated data was less than a simulated parameter value.  The test in
+our example program returns an array with two values, the first entry
+of which is an indicator of whether $\mu < \mu^{\textrm{sim}}$ and the
+second and indicator of whether $\sigma < \sigma^{\textrm{sim}}.$^[We
+conventionally order these in the same order as the parameters were
+declared to make it easy to read them out in order downstream.]
 
 In general, if we have a posterior draw $\theta^{(m)},$ the value for
-$k$-th entry of $\mathrm{I_lt_sim}^{(m)}$ will be
+$k$-th entry of $\textrm{I_lt_sim}^{(m)}$ will be
 $$
-\mathrm{I_lt_sim}^{(m)}_k
+\textrm{I_lt_sim}^{(m)}_k
 \ = \
-\mathrm{I}\left[
+\textrm{I}\!\left[
 \theta^{(m)}_k < \theta_k^{\textrm{sim}}
 \right].
 $$
@@ -345,20 +387,20 @@ $$
 \ = \
 (1.01, 0.23).
 $$
-Suppose we then take $M = 4$ simulations to produce
+Suppose we then take $M = 4$ simulations to produce draws
 $$
 \begin{array}{r|rr}
-m & \mu & \sigma \\ \hline
+m & \mu^{(m)} & \sigma^{(m)} \\ \hline
 1 & 1.07 & 0.33 \\
 2 & -0.32 & 0.14 \\
 3 & -0.99 & 0.26 \\
 4 & 1.51 & 0.31 \\
 \end{array}
 $$
-Then the value of $\textrm{I_lt_sim}$ will be the following array,
-with four rows and two columsn,
+Then the value of $\textrm{I_lt_sim}$ will be an array with four rows
+and two columns,
 $$
-\begin{array}{r|rr}
+\begin{array}{c|cc}
 m & \mu^{(m)} < \mu^{\textrm{sim}} &
     \sigma^{(m)} < \sigma^{\textrm{sim}}
 \\[4pt] \hline
@@ -368,29 +410,28 @@ m & \mu^{(m)} < \mu^{\textrm{sim}} &
 4 & 0 & 0
 \end{array}
 $$
-In two of the three posterior draws, $\mu^{(m)} < \mu^{\textrm{sim}}$ and
+In two of the three posterior draws, $\mu^{(m)} < \mu^{\textrm{sim}}$;
 in one of the posterior draws, $\sigma^{(m)} < \sigma^{\textrm{sim}}.$
-
 The rank of $\mu^{\textrm{sim}}$ and $\sigma^{\textrm{sim}}$ are thus
-the sums of the columns.  These totals are just the sums of the
-columns.  To get final ranks numbered from one, we will add one to
-these sums (which may be zero).
+the sums of the columns plus one (to ensure ranks run from $1$ to $M +
+1$).
 
-The number of possible ranks for the simulated parameters is one larger
-than the number of posterior parameter draws.  For example, if we have
-five posterior draws $\mu^{(1)}, \ldots, \mu^{(5)}$ for the location
-parameter, the rank of the simulated parameter $\mu^{\textrm{sim}}$
-can be as low as 0 if it's smaller than all of the $\mu^{(m)}$ and as
-high as 5 if it's larger than all of the $\mu^{(m)}$.^[This is called
-the "fencepost" problem in introductory computer science classes,
-where the analogy is that if there are $n$ fence posts, there are $n -
-1$ connecting bits of fence.  Failure to adjust for this discrepancy
-in counts between posts and fence units is the cause of numerous
-off-by-one errors in computer programs.]   We add one to the raw
-counts (which range from zero the number of draws) to get ranks
-numbering from one to the number of draws plus one.
+The number of possible ranks for the simulated parameter among the
+posterior draws is one larger than the number of posterior draws.  For
+example, if we have five posterior draws $\mu^{(1)}, \ldots,
+\mu^{(5)}$ for the location parameter, the rank of the simulated
+parameter $\mu^{\textrm{sim}}$ can be as low as 0 if it's smaller than
+all of the $\mu^{(m)}$ and as high as 5 if it's larger than all of the
+$\mu^{(m)}$.^[This is called the "fencepost" problem in introductory
+computer science classes, where the analogy is that if there are $n$
+fence posts, there are $n - 1$ connecting bits of fence.  Failure to
+adjust for this discrepancy in counts between posts and fence units is
+the cause of numerous off-by-one errors in computer programs.]  We add
+one to the raw counts (which range from zero the number of draws) to
+get ranks numbering from one to the number of draws plus one.
 
-## Testing uniformity of ranks
+
+# Hypothesis Testing Uniformity of Ranks
 
 We're going to apply a simple $\chi^2$ test to the ranks by binning
 them.  We will divide the ranks into 20 bins.^[This assumes the number
@@ -399,7 +440,7 @@ floating point does not solve this problem, as we only have a discrete
 number of possible ranks as output.]
 
 Because the number of ranks is one greater than the number of
-simulations, we will use 999 simulations to get an evenly divisble
+simulations, we will use 999 simulations to get an evenly divisible
 1000 possible ranks.  Also, to make our life easier in R, we will
 number the ranks `1:1000` rather than `0:999`.
 
@@ -407,9 +448,34 @@ The counts in each bin will follow a uniform distribution under
 the null hypothesis of calibration.  Therefore the squared difference
 from the expected count of each bin will follow a $\chi^2$
 distribution and we can employ the standard hypothesis test for
-uniformity.
-
-# Coding Simulation-Based Calibration in RStan
+uniformity.  This involves the test statistic
+$$
+X^2
+\ = \
+\sum_{i = 1}^I
+\frac{\displaystyle \left( b_i - e_i \right)^2}
+     {\displaystyle e_i}
+$$
+where $b_i$ is the number of ranks falling in bin $i \in 1:I$ and
+$$
+e_i = \frac{M}{I}
+$$
+is the number of ranks expected to fall in that bin under the null
+hypothesis of uniformity.^[If the bins are not uniformly sized, the
+expectations $e_i$ may be changed to accomodate.]  Under the null
+hypothesis of uniformity, the test statistic $X^2$ follows a $\chi^2$
+distribution with $I$ degrees of freedom.^[The test statistic is just
+a function of the random variables $b_i$ and is hence a random
+variable itself with all the usual properties like having a
+distribution.]  The reported $p$-value will be that of the probability
+of having a value as extreme as that observed in the $b_i$ given the
+assumption of uniformity.  If this is very small, we can confidently
+reject the assumption of uniformity and conclude there is something
+wrong with our sampler.^[We do not need to make such stark binary
+choices.  We are just using these hypothesis tests as flags to alert
+us to possible problems introduced by code changes or to cause us to
+check our model's fit more closely if we are just applying this
+procedure to a single model of interest.]
 
 ## Testing uniformity in R
 
@@ -453,7 +519,7 @@ the `chisq.test` call that indicates the expected probability of
 inclusion in each bin.]
 
 
-## R function for simulation-based calibration of Stan programs
+# Coding Simulation-Based Calibration in RStan
 
 Given the Stan program to do the heavy lifting of fitting, we can
 write a simple R driver program to calculate all we need for
@@ -461,8 +527,9 @@ simulation-based calibration (assuming a Stan program defining the
 appropriate test variables).  Let's first include the Stan library and
 print.
 
-Then we have the `sbc` function itself, which needs the include of `rstan.`
-
+First, we have a simple program to determine the number of parameters
+being monitored for simulation-based calibration in the Stan program.
+This and the SBC program itself will depend on the `rstan` library.
 
 ```{r}
 # @param model: precompiled Stan model
@@ -476,6 +543,9 @@ num_monitored_params <- function(model, data = list()) {
   }
 ```
 
+The SBC program itself takes a slew of arguments and returns a
+structured result.
+
 ```{r}
 # @param model: precompiled Stan model
 # @param data: list of data for model (defaults to empty)
@@ -486,7 +556,7 @@ num_monitored_params <- function(model, data = list()) {
 # @param seed: PRNG seed to use for Stan program to generate data
 # @param target_n_eff: target effective sample size (should be 80%
 #                      or 90% of stan_sims to stand a chance)
-# @return list with keys (rank, p_value, tin) for 2D array of ranks
+# @return list with keys (rank, p_value, thin) for 2D array of ranks
 #         and 1D array of p-values, and 1D array of thinning rates
 sbc <- function(model, data = list(),
                 sbc_sims = 1000, stan_sims = 999,
@@ -525,9 +595,8 @@ sbc <- function(model, data = list(),
 }
 ```
 
-The `sbc` function takes a number of arguments as documented before
-its definition.  These include a precompiled Stan model^[As produced
-from a Stan program in a file `model_file` by
+The arguments to the `sbc()` function include a precompiled Stan
+model^[As produced from a Stan program by
 `rstan::stan_model(model_file).`], any data required by that model
 (defaulting to an empty list for models that require no external
 data), a number of total simulations for SBC and a total number of
@@ -543,32 +612,41 @@ the matrix of ranks produced by sampling.
 
 The `sbc()` function then iterates over the number of SBC simulations,
 and for each one simulates a data set then fits it with Stan.^[The
-simulation is also in the Stan program.]  We need to make sure that
-effective sample size is large enough to remove correlation from the
-posterior draws or they will fail the uniformity test.  So what we do
-is introduce a pattern known as *iterative deepening* in the
-programming literature.  We start with a guess of hwo much thinning we
-will need, run with that amount of thinning, test our effective sample
-size, and retry with more thinning if it is not large enough.
+simulation code for the parameters is also in the Stan program.]  We
+need to thin and make sure the resulting effective sample size is
+large enough to remove correlation from the posterior draws or they
+will fail the uniformity test.^[This doesn't mean we should do
+inference on thinned sets of draws; the unthinned draws produce more
+accurate expectation calculations.]
 
-We will be using the effective sample size for `lp__`, the log density
-(up to an additive normalizing constant).  This is a non-linear
-function of all of the parameters and if it mixes well, the parameters
-typically mix well.^[As the transform of a group of random variables,
-the log density is also a random variable in the posterior.  We could
-use it to compute the entropy of a distribution, for example, which is
-the expectation of a log density.]  A stricter test would be to
-require every parameter's estimated effective sample size to exceed
-some threshold; multiple parameters will make such a test even
-stricter.
+In order to hit our target effective sample size, we'll introduce a
+technique known as *iterative deepening* in the algorithms literature.
+The algorithm starts runs with an initial amount of thinning, then
+tests if the effective sample size is large enough.  If it's not, the
+program continues retrying with more iterations and more thinning
+until it hits the target effective size or exceeds the maximum
+thinning rate allowed.^[If there was no maximum, there would be a risk
+of infinite loops in models that do not mix well in the sampler.]
+
+To monitor mixing, we will be using the estimated effective sample
+size for `lp__`, the log density (up to an additive normalizing
+constant).  This is a non-linear function of all of the parameters and
+if it mixes well, the parameters typically mix well.^[As the transform
+of a group of random variables, the log density is also a random
+variable in the posterior.  We could use it to compute the entropy of
+a distribution, for example, which is the expectation of a log
+density.]  A stricter test would be to require every parameter's
+estimated effective sample size to exceed some threshold; multiple
+parameters will make such a test even stricter.
 
 The call to the sampler uses the seed specified in the argument, with
 a chain id corresponding to the SBC iteration.  This will make sure
 each SBC iteration uses its own segment of a long sequence of
-pseudorandom number draws.^[Controlling the PRNGs in simulation
-programs is critical.  Often built-in seeds are time-based, which in
-computation-intensive situations can result in the same seed being
-reused, which defeats the assumption of independent testing.]
+pseudorandom number draws.^[Controlling the pseudo-random number
+generators in simulation programs is critical.  Often built-in seeds
+are time-based, which in computation-intensive situations can result
+in the same seed being reused, which defeats the assumption of
+independent testing.]
 
 To extract the effective sample size for `lp__`, we need to dive
 into the returned Stan fit object.^[RStan is distributed with a
@@ -605,20 +683,15 @@ With a default of 999 draws, the ranks should range uniformly from 1
 to 1000.
 
 With these ranks in hand, the `test_uniform_ranks` program calculates
-the $p$-value for each parameter.  The null hypotehsis is that the
+the $p$-value for each parameter.  The null hypothesis is that the
 ranks of the simulated parameter value among the posterior draws will
-be uniform across multiple simulated parameters and data sets.  The
-maximum rank is calculated to be one more than the number of
-simulations.  The raw ranks run from 0 to the number of simulations,
-but we add 1 to those so that they run from 1 to the number of
-simulations plus 1 and divide evenly into bins using modulo
-arithmetic.^[These are all messing coding details that are important
-to get right so as not to induce a small bias into the
-calculations. Please double-check I did my calculations here correctly!]
+be uniform across multiple simulated parameters and data sets.
 
 The program returns the raw ranks for each parameter for each SBC
-iteration, along with the p-values for each parameter and the thinning
+iteration, along with the p-values for each parameter, and the thinning
 level used for each iteration.
+
+## When things go right
 
 To run, we first have to compile the Stan program.
 
@@ -682,7 +755,7 @@ $y^{\textrm{sim}}$ based on these as
 $$
 y^{\textrm{sim}}_n
 \sim
-\mathrm{student_t}(4, \mu, \sigma).
+\textrm{student_t}(4, \mu, \sigma).
 $$
 
 Here's the full Stan code.
@@ -695,7 +768,7 @@ Only a single line has changed in the code, with
 
 
 ```
-    y_sim[n] = normal_rng(4, mu_sim, sigma_sim);
+    y_sim[n] = normal_rng(mu_sim, sigma_sim);
 ```
 
 being replaced by
@@ -723,7 +796,7 @@ would expect.  Here are the histograms of ranks, which visually
 indicate how the location parameter is well calibrated but not the
 scale parameter.
 
-```{r, fig.cap = "Histogram of ranks of the simulated parameter value with respect to the posterior draws for the two model parameters. Because the model is misspecified for the data generating process, we expect to see clear evidence of non-uniformity in the histograms."}
+```{r, fig.cap = "For a misspecified model where the simulation procedure does not match the model, the histograms will be far  uniform.  Here, the data generating process is Student-t with four degrees of freedom whereas the model assumes normality."}
 
 bad_A <- dim(bad_result$rank)[1]
 bad_rank_df <-
@@ -769,7 +842,8 @@ haven't acted on yet.
 ## Appendix: Included R code
 
 This all executes before other code, but is not included above to
-cluttering the document before it starts.  We need to import the following R libraries.
+cluttering the document before it starts.  We need to import the
+following R libraries.
 
 ```{r}
 library(ggplot2); library(knitr); library(rstan);  library(tufte)
@@ -849,6 +923,9 @@ ggtheme_tufte <- function() {
 ```
 
 ## Appendix: Session information
+
+In the interest of full reproducibility, here is a record of the
+dependencies used to generate this case study.
 
 ```{r}
 sessionInfo()
