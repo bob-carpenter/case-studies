@@ -1,0 +1,934 @@
+---
+title: "Rejecting Dawid and Skene's Model of Data Annotation and Fixing it with Item Difficulty"
+author: "Bob Carpenter"
+date: "11 August 2019"
+output:
+  tufte::tufte_html:
+    toc: true
+    toc_depth: 1
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+options(htmltools.dir.version = FALSE)
+options(digits = 2)
+options("width" = 180)
+
+library(ggplot2)
+
+library(gridExtra)
+
+library(knitr)
+knitr::opts_chunk$set(cache = FALSE)
+knitr::opts_chunk$set(tidy = FALSE, cache.extra = packageVersion('tufte'))
+knitr::opts_chunk$set(comment = "| ")
+
+library(rstan)
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores(logical = FALSE))
+
+library(tufte)
+
+ggtheme_tufte <- function() {
+  theme(plot.background =
+          element_rect(fill = "#fffff8",
+                       colour = "#fffff8",
+                       size = 0.5,
+                       linetype = "solid"),
+        plot.margin=unit(c(1, 1, 0.5, 0.5), "lines"),
+        panel.background =
+          element_rect(fill = "#fffff8",
+                       colour = "#fffff8",
+                       size = 0.5,
+                       linetype = "solid"),
+        panel.grid.major = element_line(colour = "white", size = 1, linetype="dashed"),
+          # blank(),
+        panel.grid.minor = element_blank(),
+        legend.box.background =
+          element_rect(fill = "#fffff8",
+                       colour = "#fffff8",
+                       linetype = "solid"),
+        axis.ticks = element_blank(),
+        axis.text = element_text(family = "Palatino", size = 16),
+        axis.title.x = element_text(family = "Palatino", size = 20,
+                                    margin = margin(t = 15, r = 0, b = 0, l = 0)),
+        axis.title.y = element_text(family = "Palatino", size = 18,
+                                    margin = margin(t = 0, r = 15, b = 0, l = 0)),
+        strip.background = element_rect(fill = "#fffff8",
+                                        colour = "#fffff8",
+                                        linetype = "solid"),
+        strip.text = element_text(family = "Palatino", size = 16),
+        legend.text = element_text(family = "Palatino", size = 16),
+        legend.title = element_text(family = "Palatino", size = 16,
+                                    margin = margin(b = 5)),
+        legend.background = element_rect(fill = "#fffff8",
+                                        colour = "#fffff8",
+                                        linetype = "solid"),
+        legend.key = element_rect(fill = "#fffff8",
+                                        colour = "#fffff8",
+                                        linetype = "solid")
+  )
+}
+
+printf <- function(msg = "%5.3f", ...) {
+  cat(sprintf(msg, ...))
+}
+
+print_file <- function(file) {
+  cat(paste(readLines(file), "\n", sep=""), sep="")
+}
+```
+
+
+
+# Introduction
+
+Dawid and Skene's model of the data annotation process presupposes
+that the labels supplied by a collection of annotators are
+conditionally independent given the true category of the item being
+labeled.^[ Dawid, A. P., & Skene, A. M. (1979). Maximum likelihood
+estimation of observer error-rates using the EM algorithm. *Applied
+Statistics*, 20--28.]  In situations where some items are more
+challenging to label than others, this independence assumption is
+violated.
+
+In all of the annotation cases with which we are familiar, items pose
+varying degrees of difficulty.  For example, in natural language
+tasks, some author intents are more opaque than others due to language
+usage or context.  In review settings, some papers are crowd favorites
+and others are more marginal due to either poor writing, unpopular
+topic, marginal results, etc.  In diagnostic settings, a patient with
+an advanced disease is typically easier to diagnose than an
+early-stage patient.
+
+As a concrete example, we consider dentists annotating patient X-rays
+as positive or negative for caries.^[Caries is a kind of pre-cavity.]
+This labeling task violates independence because some X-rays clearly
+indicate caries, whereas others are borderline and may be attributed
+to noise by one dentist and to caries by another.  We show using
+posterior predictive checks and a simple $\chi$-square test that such
+data is not consistent with the Dawid and Skene model.
+
+
+# The Dawid and Skene Model of Data Annotation
+
+Dawid and Skene's model allows us to infer annotator accuracy and
+bias,^[Bias here is simply a tendency to favor one label over another,
+such as a (hanging) judge favoring guilty verdicts or a (pushover)
+teacher favoring passing grades.]  as well as the true underlying
+category of items and the prevalence of categories.  We will restrict
+attention to the case where there are two outcomes, positive (label 1)
+and negative (label 0).  These might indicate the quality of a movie
+the disease status of a subject, or the disposition of a judge in a
+bench trial.
+
+The generative process starts with the true categories, which are
+generated according to a population probability of positive and
+negative outcomes.  For instance, this might represent the prevalence
+of a disease or the proportion of quality movies.  Then, conditioned
+only on whether the true category for an item is positive or negative,
+the annotator supplies a positive or negative label.  Each annotator
+has a separate accuracy for positive and negative items and respond
+with that accuracy based on whether the item is positive or negative.
+The accuracy for positive items is the true positive rate, whereas the
+accuracy for negative items is one minus the false positive rate.^[The
+true positive rate of a diagnostic test is known as its sensitivity;
+one minus the false positive rate is known as its specificity.]
+
+Typically, only the annotator's labels are observed.  Specifying the
+joint density for the model and turing the Bayesian crank allows us to
+infer the population prevalence of positive items, the positive or
+negative status of each item, as well as each annotator's true and false
+positive rates.
+
+## The data
+
+We will assume there are $I$ items and $J$ annotators.  For each $i
+\in 1:I$ and $j \in 1:J$, $y_{i, j} \in \{ 0, 1 \}$ represents the
+label supplied by annotator $j$ for item $i$.
+
+## The latent data
+
+For each item $i \in 1:I$, $z_i \in \{ 0, 1 \}$ represents its true
+label.  The value of $z_i$ is typically unobserved and has to be
+inferred or, more typically, marginalized.^[The term "latent data" is
+used in traditional settings because $z$ has a distribution and thus
+can't be considered a parameter in a frequentist analysis.  In
+Bayesian analysis, we will treat $z$ like any other unobserved
+quantity.]
+
+## The parameters
+
+Let $\pi$ be the log odds that an item is positive. That is,
+$\textrm{logit}^{-1}(\pi)$ is the prevalence of positive items.^[
+A probability $u \in (0, 1)$ corresponds to odds $\frac{u}{1 - u}$ and
+log odds $\log \frac{u}{1 - u}$.  The log odds function is
+conventionally written as $\textrm{logit}$, with definition
+$$
+\textrm{logit}(u) = \log \frac{u}{1 - u}.
+$$
+The inverse of the log odds function is
+$$
+\textrm{logit}^{-1}(v) = \frac{1}{1 - \exp(-v)}.
+$$
+]
+
+For each annotator $j \in 1:J$, let $\theta_{j, 1}$ be the true
+positive rate and $\theta_{j, 0}$ the false positive rate on the log
+odds scale.  The true positive rate for annotator $j$ is thus
+$\textrm{logit}^{-1}(\theta_{j, 1})$ and the false positive rate
+$\textrm{logit}^{-1}(\theta_{j, 0})$.
+
+## The full data likelihood
+
+The model follows the generative story, first generating the true
+category for each item $i \in 1:I$ by
+$$
+z_i \sim \textrm{bernoulli}(\textrm{logit}^{-1}(\pi)).
+$$
+Then for each $i \in 1:I$ and $j \in 1:J$, the label $y_{i, j}$
+supplied by annotator $j$ for item $i$ is generated as
+$$
+y_{i, j}
+\sim \textrm{bernoulli}(\textrm{logit}^{-1}(\theta_{j, z[i]})).
+$$
+This is called the full data likelihood because it involves the latent
+data $z$ as well as the observed data $y$,
+$$
+\begin{array}{rcl}
+p(z, y \mid \pi, \theta)
+& = &
+p(z \mid \pi) \ \times \ p(y \mid z, \theta)
+\\[4pt]
+& = &
+\prod_{i = 1}^I
+\textrm{bernoulli}\left(z_i \mid \textrm{logit}^{-1}(\pi)\right)
+\ \times \
+\prod_{i = 1}^I
+\prod_{j = 1}^J
+\textrm{bernoulli}\left(y_{i, j} \mid \textrm{logit}^{-1}(\theta_{j, z[i]})\right).
+\end{array}
+$$
+
+The conditional independence assumptions implied by the sampling
+notation are made explicit in the full data likelihood.  First, the
+true categories $z_1, \ldots, z_I$ are conditionally independent given
+the prevalence $\pi$.  Second, the labels $y_{i, 1}, \ldots, y_{1, J}$
+for an item $i$ from annotators $1, \ldots, J$ are conditionally
+independent given $z_i$, the true category of item $i$.
+
+## The likelihood function
+
+The likelihood function for the observed data is derived by
+marginalizing the missing data $z$ (the true categories) out of the
+full data likelihood.   As with most latent data problems, the way to
+approach this one is one data item at a time.  Thus we begin by
+factoring the likelihood by item,
+$$
+p(y \mid \pi, \theta)
+\ = \
+\prod_{i \in 1:I} p(y_i \mid \pi, \theta).
+$$
+The marginalization can then be done one data item at a time, using
+the law of total probability,
+$$
+p(y_i \mid \pi, \theta)
+\ = \
+\sum_{k = 0}^1 p(y_i, z_i = k \mid \pi, \theta).
+$$
+The term under the sum factors as
+$$
+p(y_i, z_i = k \mid \pi, \theta)
+\ = \
+p(z_i = k \mid pi) \ \times \ p(y_i \mid z_i = k, \theta),
+$$
+the right-hand term of which expands as
+$$
+\begin{array}{rcl}
+p(y_i \mid z_i = k, \theta)
+& = &
+\prod_{j = 1}^J p(y_{i, j} \mid z_i = k, \theta)
+\\[4pt]
+& = &
+\prod_{j = 1}^J
+\textrm{bernoulli}\left(y_{i, j} \mid \textrm{logit}^{-1}(\theta_{j, k})\right).
+\end{array}
+$$
+
+## Maximum marginal likelihood estimate
+
+Dawid and Skene used this factorization in the expectation (E) step of
+the expectation maximization (EM) algorithm to compute maximum
+marginal likelihood estimates of $\pi$ and $\theta$,
+$$
+\pi^*, \theta^*
+\ = \
+\textrm{arg max}_{\pi, \theta} \
+p(y \mid \pi, \theta).
+$$
+Given the expectations, the maximization (M) step can be carried out
+using a simple optimization-based maximum likelihood algorithm over
+expectation-weighted data.
+
+# A Bayesian Extension of Dawid and Skene's Model
+
+The first-pass Bayesian extension is straightforward once we settle on
+some simple "default" priors.
+
+## A "uniform" prior
+
+Although the maximum likelihood estimate doesn't change based on
+parameterization, the notion of uniformity does.  For example, its
+possible to have a uniform prior on a probability, as the set of
+probabilities forms a finitely-bounded interval; it is not possible to
+have a uniform prior on log odds because the support is over all real
+numbers, which is not compact.
+
+For simplicity in this first example, we'll assume all parameters are
+uniform on the probability scale,
+$$
+\begin{array}{rcl}
+\textrm{logit}^{-1}(\pi) & \sim & \textrm{uniform}(0, 1)
+\\
+\textrm{logit}^{-1}(\theta_{j, 1}) & \sim & \textrm{uniform}(0, 1)
+\\
+\textrm{logit}^{-1}(\theta_{j, 0}) & \sim & \textrm{uniform}(0, 1)
+\end{array}
+$$
+After the Jacobian dust settles from the change of variables,
+uniformity on probability amounts to standard logistic on the log odds
+scale,
+$$
+\begin{array}{rcl}
+\pi & \sim & \textrm{logistic}(0, 1)
+\\
+\theta_{j, 1} & \sim & \textrm{logistic}(0, 1)
+\\
+\theta_{j, 0} & \sim & \textrm{logistic}(0, 1)
+\end{array}
+$$
+While the prior is uniform on the probability scale, it is highly
+concentrated near 0 on the log odds scale.
+
+
+## The joint density
+
+All of Bayesian inference flows from a full specification of the joint
+density of parameters and data.  Here, we decompose the joint
+probability into a product of the full data likelihood and prior,
+
+$$
+p(y, z, \pi, \theta)
+\ = \
+p(y, z \mid \pi, \theta) \ \times \ p(\pi, \theta),
+$$
+
+where the full data likelihood is as before and the prior factors as
+
+$$
+p(\pi, \theta)
+\ = \
+\textrm{logistic}(\pi \mid 0, 1)
+\ \times \
+\prod_{j = 1}^J \, \prod_{k = 1}^K
+  \textrm{logistic}(\theta_{j, k} \mid 0, 1).
+$$
+
+## The posterior
+
+The posterior density is the density of the parameters given the
+observed data.  By Bayes's rule, the posterior is proportional to the
+likelihood times the prior,
+
+$$
+p(\pi, \theta \mid y)
+\ \propto \
+p(y \mid \pi, \theta)
+\ \times \
+p(\pi, \theta).
+$$
+
+In Bayesian inference, we will also be able to treat the missing
+data as if they were parameters and impute their values in a posterior
+derived from the full data likelihood,
+
+$$
+\begin{array}{rcl}
+p(z, \pi, \theta \mid y)
+& \propto &
+p(y, z \mid \pi, \theta)
+\ \times \
+p(\pi, \theta)
+\\[4pt]
+& = &
+p(y \mid z, \theta)
+\ \times \ p(z \mid \pi)
+\ \times \ p(\pi, \theta).
+\end{array}
+$$
+
+In Bayesian computation, we will often do something in between and
+work with the standard posterior $p(\theta, \pi \mid y)$ but also
+include calculations of the missing data in expectation, which being
+an indicator, gives us the posterior event probability of interest,
+$$
+\mbox{Pr}[z_i = 1 \mid y]
+\ = \
+\mathbb{E}[z_i \mid y].
+$$
+As we showed above, these calculations are straightforward and were
+given by Dawid and Skene as the E-step of their EM-algorithm for
+maximum marginal likelihood.
+
+# The Bayesian Dawid and Skene Model in Stan
+
+We'll code the model in Stan as follows (the source is in
+`dawid-skene-logit.stan`).
+
+```{r echo=FALSE}
+print_file('dawid-skene-logit.stan')
+```
+
+# Fitting the Dentistry Data
+
+Espeland and Handelman collected annotations in the form of diagnoses
+from 5 dentists over 3869 X-rays for caries, a form a
+pre-cavity.^[Espeland, M. A. and S. L. Handelman. 1989. Using latent
+class models to characterize and assess relative-error in discrete
+measurements. *Biometrics* **45**:587--599.]  Each dentist annotated
+each X-ray.  The data is easily presented in table form.
+
+| Diagnoses | Count |   | Diagnoses | Count |
+|:---------:|------:|:-:|:---------:|------:|
+| 00000     |  1880 |   | 10000     |    22 |
+| 00001     |   789 |   | 10001     |    26 |
+| 00010     |    43 |   | 10010     |     6 |
+| 00011     |    75 |   | 10011     |    14 |
+| 00100     |    23 |   | 10100     |     1 |
+| 00101     |    63 |   | 10101     |    20 |
+| 00110     |     8 |   | 10110     |     2 |
+| 00111     |    22 |   | 10111     |    17 |
+| 01000     |   188 |   | 11000     |     2 |
+| 01001     |   191 |   | 11001     |    20 |
+| 01010     |    17 |   | 11010     |     6 |
+| 01011     |    67 |   | 11011     |    27 |
+| 01100     |    15 |   | 11100     |     3 |
+| 01101     |    85 |   | 11101     |    72 |
+| 01110     |     8 |   | 11110     |     1 |
+| 01111     |    56 |   | 11111     |   100 |
+
+
+Each diagnosis pattern indicates which of the five dentists diagnosed
+caries.  For example, there were 63 X-rays with diagnosis pattern
+00101, indicating that dentists 3 and 5 provided positive diagnoses
+while the others provided negative ones.  There are $J = 5$ dentists
+and a total of $I = 3869$ X-rays (the total number of X-rays is the
+sum of all the counts in the table).
+
+We need to convert this patterned data into an $I \times J$ table of
+annotations.^[A Stan program could be written to accept the aggregated
+count data as it is a sufficient statistic; the aggregate Stan program
+would be more efficient than coding in terms of an $I \times J$ table
+if the table for $y$ was smaller than the pattern table, which is true
+if $I \times J < 2^J$.]  The following conversion program works by
+brute force, relying on the binary numerical ordering of our input
+data.
+
+```{r}
+caries_data <- read.table('caries-data.R', header = TRUE, sep = ",")
+I <- sum(caries_data$count)
+J <- 5
+pos <- 1
+i <- 1
+y <- matrix(NA, nrow = I, ncol = J)
+for (i1 in 0:1)
+  for (i2 in 0:1)
+    for (i3 in 0:1)
+      for (i4 in 0:1)
+        for (i5 in 0:1) {
+          for (m in 1:caries_data$count[pos]) {
+            y[i , 1:J] <- c(i1, i2, i3, i4, i5)
+            i <- i + 1
+          }
+          pos <- pos + 1
+        }
+```
+
+Because of the uniform prior on the probabilities and the existence of
+alternative modes where the annotators are behaving adversarially by
+knowingly providing the wrong answer.  To avoid falling into these
+modes, we will initialize closer to the non-adversarial modes, with a
+high true-positive and low false-positive rate.  We'll initialize
+prevalence to 0 on the log odds scale (50% on the probability scale).
+
+```{r}
+logit <- function(u) log(u / (1 - u))
+
+inv_logit <- function(v) 1 / (1 + exp(-v))
+
+init_fun <- function(chain_id) {
+  tp_rate_init = rep(logit(0.9), J)
+  fp_rate_init = rep(logit(0.1), J)
+  theta_init = matrix(c(tp_rate_init,
+                        fp_rate_init),
+                      nrow = 2, byrow = TRUE)
+  list(pi = 0, theta = theta_init)
+}
+```
+
+We compile the Stan function and save it as follows.
+
+```{r results = 'hide'}
+model_logit <- stan_model('dawid-skene-logit.stan')
+```
+
+Then we fit the model using the default no-U-turn sampler with 4
+chains of 5000 total iterations, half devoted to warmup.
+
+```{r}
+M <- 10000
+fit_logit <- sampling(model_logit, data = list(I = I, J = 5, y = y),
+                      init = init_fun,
+                      iter = M / 2, chains = 4, refresh = 0,
+                      open_progress = FALSE)
+```
+We can print the resulting parameter estimates.
+
+```{r}
+print(fit_logit, prob = c(0.05, 0.5, 0.95),
+      pars = c("pi", "theta"), digits = 3)
+```
+
+Judging from the lack of warning messages, $\widehat{R}$ values
+(column `Rhat`) close to 1, and effective sample sizes (column
+`n_eff`) near the number of post-warmup draws, there are no
+warning signs indicating the sampler failed.
+
+As a further back-of-the-envelope check, the proportion of positively
+coded items in the data, given by
+$$
+\textrm{mean}(y) = 0.2,
+$$
+is consistent with the posterior mean of the prevalence,
+$$
+\mathbb{E}[\pi \mid y] = -1.4,
+$$
+because $\textrm{logit}(0.2) = -1.4.$
+
+# Rejecting the Dawid-Skene Model with Posterior Predictive Checks
+
+Posterior predictive checks are based on the idea that if we simulate
+data from a draw from the posterior, it should look like the data that
+we started with.  That is, we start with data $y$, fit the posterior
+$p(\pi, \theta \mid y)$, then simulate new data $y^{\textrm{sim}}$
+drawn from the sampling distribution $p(y \mid \theta, \pi)$.
+If the model fits the data well, statistics calculated on the
+simulated data $y^{\textrm{sim}}$ should line up with those calculated
+on $y$.
+
+We are going to take a multivariate statistic involving the number of
+items annotated by 0, 1, 2, 3, 4, or 5 dentists annotated is having
+caries.  In the original data, this summary statistic can be
+calculated as
+
+```{r}
+total_counts <- rep(0, 6)
+for (i in 1:I) {
+  idx <- sum(y[i, ]) + 1
+  total_counts[idx] <- total_counts[idx] + 1
+}
+df <- data.frame(dentists = 0:5, count = total_counts)
+```
+
+Rendering the data frame gives us.
+
+```{r echo = FALSE}
+knitr::kable(df, caption = "Item counts with 0, 1, ..., 5 dentists annotating caries.")
+```
+
+That is, there were 1880 X-rays for which all five dentists agreed
+there was no caries present.  There were also 1065 cases where only 4
+out of 5 dentists provided a positive diagnosis, 404 cases where 3 out
+5 dentists provided a positive diagnosis, and so on, up to 100 cases
+where all five dentists agreed caries was present.  If we estimated
+prevalence based on dentist consensus (all 5 dentists diagnosing a
+case positively), it would only be 1/30, whereas if we estimated it
+based on majority vote (3 out of 5 dentists), it would be 520 / 3869,
+or about 13%.  The posterior mean prevalence estimated from the Dawid
+and Skene model is 20%, much higher than the majority vote baseline
+would establish, because it is going to estimate each dentist's true
+positive and false positive rates and adjust their annotations
+accordingly.
+
+We are going to use these total counts to perform a posterior
+predictive check by simulating new data sets based on posterior
+parameter draws, then calculating the simulated voting statistics and
+comparing it to the observed voting statistics.
+
+This simulation all takes place in the generated quantities block,
+
+```
+generated quantities {
+  int<lower = 0> total_counts_sim[6];
+  int<lower = 0, upper = 1> total_counts_gt_sim[6];
+  {
+    int z_sim[I];
+    int y_sim[I, J];
+    for (i in 1:I)
+      z_sim[i] = bernoulli_logit_rng(pi);
+    for (i in 1:I)
+      for (j in 1:J)
+        y_sim[i, j] = bernoulli_logit_rng(theta[z_sim[i] == 1 ? 1 : 2, j]);
+    total_counts_sim = total_response_counts(y_sim);
+  }
+  for (n in 1:6)
+    total_counts_gt_sim[n] = total_counts[n] > total_counts_sim[n];
+}
+```
+
+with the data counts precomputed as transformed data
+
+```
+transformed data {
+  int<lower = 0> total_counts[6] = total_response_counts(y);
+}
+```
+
+where the function for total counts is defined in the function block,
+
+```
+functions {
+  int[] total_response_counts(int[ , ] y) {
+    int total_counts[6] = rep_array(0, 6);  // indexing + 1
+    for (i in 1:size(y))
+      total_counts[sum(y[i]) + 1] += 1;
+    return total_counts;
+  }
+}
+```
+
+Now when we look at the posterior, we get the expected total simulated
+counts reported as the mean of `total_counts_sim`,
+
+```{r}
+print(fit_logit, pars = c("total_counts_sim"), probs = c(), digits = 3)
+```
+
+The probability that the data value is greater than the simulated
+value is reported as the mean of `total_counts_gt_sim`.  A quantity
+derived from the comparison of a statistic computed on the observed
+data and the same statistic computed on posterior predictive simulated
+data is known as a posterior $p$-value.  Values close to 1 indicate
+that the simulated data is too large, whereas values close to 0
+indicate that the simulated data is too small.  The two-sided
+posterior $p$-value is the minimum of the posterior mean and one minus
+the posterior mean.  These clearly show that the Dawid-Skene model
+should be rejected.
+
+```{r}
+print(fit_logit, pars = c("total_counts_gt_sim"), probs = c(), digits = 3)
+```
+
+Other than the total count of cases where all dentists diagnosed the
+X-ray as not indicating caries, all other posterior $p$-values
+indicate rejecting the hypothesis that the data was generated by this
+model.  In particular, there were many more all-positive diagnoses
+where the dentists were unanimous.  The number of unanimous cases in
+the observed data $y$ is 100, whereas simulation from the model
+indicates fewer than 60 cases are expected (with standard deviation
+less than 10).
+
+## Chi-square test
+
+Given that we now have expected counts and actual counts for six bins
+(zero positive diagnoses to five positive diagnoses), we can apply
+Pearson's $\chi^2$ test.  This test is based on a statistic
+
+$$
+X^2 = \sum_{n = 0}^6 \frac{(E_n - A_n)^2}{E_n},
+$$
+
+where $E_n$ is the expected count in bin $n$ and $A_n$ is the actual
+count.  If the null hypothesis is true and the data was generated from
+the model, this statistic be distributed as chi-squared with five degrees
+of freedom (one fewer degree than number of bins),
+
+$$
+X^2 \sim \textrm{ChiSq}(5).
+$$
+
+Let's compute it and see what we get
+
+```{r}
+ss_logit <- extract(fit_logit)
+X_sq <- 0
+for (n in 1:6) {
+  E_n <- mean(ss_logit$total_counts_sim[ , n])
+  A_n <- total_counts[n]
+  X_sq <- X_sq + (E_n - A_n)^2 / E_n
+}
+printf("item difficulty model X^2 = %8.2f", X_sq)
+```
+
+We can use the built-in probability function to compute the $p$-value,
+
+```{r}
+p_value = pchisq(X_sq, df = 5, lower.tail = FALSE)
+cat("item difficulty model p_value = ", p_value)
+```
+
+# Adding Item-Level Random Effects to the Dawid and Skene Model
+
+We will assume that for each item $i \in 1:I$ being annotated, there
+is a parameter $\beta_i$ on the log odds scale, which represents the
+difficulty of labeling an item.^[This parameter plays exactly the same
+role as the difficulty parameter in an [item-response
+theory](https://en.wikipedia.org/wiki/Item_response_theory)
+one-parameter logistic model (IRT-1PL).]
+Because we model accuracy for positive and negative items separately,
+we will have to account for that in the model.
+
+## The full data likelihood
+
+The true labels are generated as before,
+
+$$
+z_i \sim \textrm{bernoulli}(\textrm{logit}^{-1}(\pi)).
+$$
+
+The likelihood conditioned on the true category for an item $z_i$
+is now broken down into two cases.  If $z_i = 1$, we take
+$$
+y_{i, j}
+\sim
+\textrm{bernoulli}\left(\textrm{logit}^{-1}(\theta_{j, 1} - \beta_i)\right).
+$$
+If $z_i = 0$, then the difficulty parameter acts in the opposite direction,
+$$
+y_{i, j}
+\sim
+\textrm{bernoulli}\left(\textrm{logit}^{-1}(\theta_{j, 0} - \beta_i)\right).
+$$
+
+To understand these definitions, suppose $z_i = 1,$ so item $i$'s true
+label is positive.  Then the log odds of an annotator's correctly
+providing label $y_{i, j} = 1$ is given by $\theta_{j, 1} - \beta_i$,
+the annotator's true positive rate minus the item difficulty.  Thus as
+the annotator's true positive rate goes up, so does their probability
+of assigning a positive label to a positive item.  As an item's
+difficulty goes up, the annotator's probability of assigning a
+positive label to a positive item goes down.
+
+Now suppose $z_i = 0,$ so item $i$'s true label is negative.  Now the
+log odds of an annotator's incorrectly providing label $y_{i, j} = 1$
+is given by $\theta_{j, 0} + \beta_i$.  As an annotator's false
+positive rate goes up, so does their probability of assigning a
+positive label to a negative item.  As the difficulty of a negative
+item goes up, so does the probability of an annotator assigning a
+positive label.
+
+# Fitting the Revised Model in Stan
+
+The revised model with item difficulty can be coded in Stan as
+follows.
+
+```{r echo = FALSE}
+print_file('dawid-skene-logit-difficulty.stan')
+```
+
+This Stan program is almost identical to the previous program for the
+original Dawid and Skene model on the log odds scale.  In this
+program, we declare a vector parameter `beta` for the difficulty
+parameters.  These get independent standard normal priors.^[The normal
+has slightly lighter tails than the logistic and thus a standard
+normal favors constrained probabilities near 0.5] Then, there is an
+unusual line, which appears to be (and is) a second prior for `beta`,
+
+```
+  sum(beta) ~ normal(0, 1);
+```
+
+This has the effect of soft-centering the sequence $\beta$ so that
+$$
+\textrm{sum}(\beta) \approx 0.
+$$
+The alternative coding would be to hard center them so that
+$\textrm{sum}(\beta) = 0$ holds exactly.  The soft centering has
+better computational properties and does not affect the final result,
+so we choose that approach here.
+
+The only other change is that the mixture in the likelihood now takes
+into account difficulty,
+
+```
+for (i in 1:I)
+  target += log_mix(inv_logit(pi),
+                    bernoulli_logit_lpmf(y[i] | theta[1] - beta[i]),
+                    bernoulli_logit_lpmf(y[i] | theta[2] + beta[i]));
+```
+
+The first line is for $z_i = 1$ and the second for $z_i = 0$, as
+determined by the interpretation of $\pi$, which is the log odds that
+$z_i = 1$.  The difficulty parameter for item `i` is subtracted in the
+$z_i = 1$ case and added for the $z_i = 0$ case, both times increasing
+the log odds of error by $\beta_i.$  The random-number generator in
+the generated quantities block is updated to match:
+
+```
+y_sim[i, j] = bernoulli_logit_rng(z_sim[i] == 1
+                                  ? theta[1, j] - beta[i]
+                                  : theta[2, j] + beta[i]);
+```
+
+Otherwise, nothing else changes, including the way the posterior
+predictive checks are calculated.
+
+As before, we start by compiling the model.
+
+```{r results = 'hide'}
+model_diff <- stan_model('dawid-skene-logit-difficulty.stan')
+```
+
+We code up a new initialization function that also initializes item difficulties.
+to zero.
+
+```{r}
+init_fun_diff <- function(chain_id) {
+  beta_init = rep(0, I)
+  append(init_fun(chain_id),
+         list(beta = beta_init))
+}
+```
+
+Then we fit the model.
+
+```{r}
+M_diff <- 2000    # total number of posterior draws in four chains
+fit_diff <- sampling(model_diff, data = list(I = I, J = 5, y = y),
+                     init = init_fun_diff,
+                     iter = M_diff / 2, chains = 4, refresh = 0,
+                     open_progress = FALSE)
+```
+
+After fitting, we print the quantities of interest.  These include the
+parameter estimates of population prevalence ($\pi$), annotator true
+positive rates ($\theta_{j, 1}$) and false positive rates ($\theta_{j,
+0}$).  We also display the posterior predictive simulations of total
+counts expected (`total_counts_sim`), the posterior predictive check
+itself (`total_counts_gt_sim`), and a few of the $\beta$ values.
+
+```{r}
+print(fit_diff, probs = c(0.05, 0.5, 0.95),
+      pars = c("pi", "theta",
+               "total_counts_sim", "total_counts_gt_sim",
+               paste("beta[", c(1, (1:19) * floor(I / 19)), "]")))
+```
+
+The estimate of log odds of a positive case are very similar to the
+original Dawid and Skene model.  The parameter estimates for annotator
+base true positive and false positive rates on the other hand have
+slightly different means, medians, and 95% posterior intervals. For
+instance, $\theta_{1,1}$, the base true positive rate of the first
+annotator has median roughly -0.6 and central 95% interval roughly
+$(-0.8, -0.3)$, whereas in the original Dawid and Skene models had a
+posterior mean of -0.4 and interval $(-0.5, -0.2)$.  Noticeably, the
+intervals are narrower in the original Dawid and Skene model.
+
+Why are the posterior intervals wider in the model with item
+difficulty?  Because there are now two degrees of freedom to explain
+the variation in an annotator's response to an item---the annotator's
+true positive or false positive rate and the item difficulty.  As
+degrees of explanatory freedom expand like this, related parameters
+tend to get broader posterior intervals as the model can no longer
+figure out which parameter is responsible for a given response profile.
+
+Why are the posterior means and medians different in the model with
+difficulty parameters?  This is partly because they represent
+different things.  The parameter value in the original Dawid and Skene
+model was the actual true positive and false negative rate for an
+annotator.  In the revised model, the true positive and false negative
+rate are mediated by item difficulty.   Only by averaging responses
+over the item difficulties in a corpus of examples can we compute
+expected true positive and false positive rates of the annotators in
+the second model with item difficulty.
+
+
+# Failing to Reject the Revised Model
+
+In the revised model, we can compute the $X^2$ statistic and perform
+the $\chi^2$ test in exactly the same way as before.
+
+```{r}
+ss_diff <- extract(fit_diff)
+X_sq_diff <- 0
+for (n in 1:6) {
+  E_n <- mean(ss_diff$total_counts_sim[ , n])
+  printf("E[%d] = %f", n, E_n)
+  A_n <- total_counts[n]
+  X_sq_diff <- X_sq_diff + (E_n - A_n)^2 / E_n
+}
+printf("X^2 = %8.2f", X_sq_diff)
+p_value_diff = pchisq(X_sq_diff, df = 5, lower.tail = FALSE)
+cat("p_value = ", p_value_diff)
+```
+
+After the addition of item difficulty parameters, the $\chi^2$
+hypothesis test does not reject the hypothesis that the expected
+marginal counts were generated by the model.
+
+
+# Future Work
+
+The obvious next step is to follow standard operating procedure in
+Bayesian item-response theory modeling.^[For modeling discussion and
+Stan implementation hints, see Daniel Furr et al.'s Stan
+case studies, [Two-Parameter Logistic Item Response Model
+](https://mc-stan.org/users/documentation/case-studies/tutorial_twopl.html)
+and [Hierarchical two-parameter logistic item response model
+](https://mc-stan.org/users/documentation/case-studies/hierarchical_2pl.html).]
+
+The next three steps following standard Bayesian IRT modeling practice
+would be the following.
+
+1.  Add a global intercept and hierarchical priors centered at zero.
+The prior on annotator true positive and false positive rates would
+involve independent half-normal priors on their scales and a scaled
+beta-prior their correlation concentrated around no correlation.  The
+prior on item difficulties can be a simple zero-centered hierarchical
+normal prior.  The global intercept will be well identified from data
+and is thus less sensitive to prior.
+
+2.  Add item-level discrimination parameters.  These enable us to
+model exactly how much the responses to each item are affected by
+annotator accuracy.
+
+3.  Amend the model so that the limiting behavior as difficulty
+increases is not a certain wrong answer, but a random guess with some
+distribution.
+
+It is much less clear how to extend this idea of difficulty to cases
+where there are more than two categories of response possible.
+
+
+# Conclusion
+
+Our recommendation is that the Dawid and Skene model with difficulties
+is used rather than the basic Dawid and Skene model, as it provides a
+better fit of the data.
+
+On a data set consisting of 5 dentists labeling nearly 4000 X-rays,
+the Dawid and Skene model fails posterior predictive checks and is
+rejected by a simple $\chi^2$ test ($p < 10^{-15}$).  After adding a
+difficulty parameter on the log odds scale, the posterior predictive
+checks are consistent with the data and the $\chi^2$ test does not
+reject the model ($p = 0.9$).  The two models estimate the same
+population prevalence of caries up to two decimal places (19%), but
+slightly different accuracies for the annotators.  The model with
+difficulty accounts for more of the variation in annotator response
+through item difficulty.
+
+With uniform priors, these models suffer from non-identifiability that
+switches between cooperative and adversarial solutions.
+Computationally, the centered parameterization behaved well and
+recovered the cooperative parameters when initialized closer to the
+cooperative mode of the posterior, where no annotator reliably
+supplies wrong answers.
