@@ -85,7 +85,7 @@ print_file <- function(file) {
 Dawid and Skene's model of the data annotation process presupposes
 that the labels supplied by a collection of annotators are
 conditionally independent given the true category of the item being
-labeled.^[ Dawid, A. P., & Skene, A. M. (1979). Maximum likelihood
+labeled.^[ Dawid, A. P., & Skene, A. M. (1979) Maximum likelihood
 estimation of observer error-rates using the EM algorithm. *Applied
 Statistics*, 20--28.]  In situations where some items are more
 challenging to label than others, this independence assumption is
@@ -932,3 +932,10 @@ Computationally, the centered parameterization behaved well and
 recovered the cooperative parameters when initialized closer to the
 cooperative mode of the posterior, where no annotator reliably
 supplies wrong answers.
+
+## Copyright and Licensing
+
+Text Copyright (2019) Bob Carpenter.  Text released under the CC-BY NC 4.0 license.
+
+Code Copyright (2019) Trustees of Columbia University.  Code is
+released under the BSD 3-clause license.

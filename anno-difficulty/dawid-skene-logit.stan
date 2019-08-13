@@ -1,3 +1,18 @@
+/**
+ * Copyright (2019) Bob Carpenter.  Released under BSD 3-clause license.
+ *
+ * Dawid and Skene model for binary data given uniform priors and then
+ * reparameterized to the log odds scale.  Then coefficients for item
+ * difficulty are added with non-uniform priors and soft centering.
+ *
+ * The model is hard coded for five annotators, each of whom annotates
+ * every item.
+ *
+ * Dawid, A. P., & Skene, A. M. (1979) Maximum likelihood estimation
+ * of observer error-rates using the EM algorithm. *Applied
+ * Statistics*, 20--28.
+ */
+
 functions {
   int[] total_response_counts(int[ , ] y) {
     int total_counts[6] = rep_array(0, 6);  // indexing + 1
@@ -19,12 +34,10 @@ parameters {
   vector[J] theta[2];
 }
 model {
-  // prior
   pi ~ logistic(0, 1);
   for (k in 1:2)
     theta[k] ~ logistic(0, 1);
 
-  // likelihood
   for (i in 1:I)
     target += log_mix(inv_logit(pi),
                       bernoulli_logit_lpmf(y[i] | theta[1]),

@@ -1,3 +1,18 @@
+/**
+ * Copyright (2019) Bob Carpenter.  Released under BSD 3-clause license.
+ *
+ * Dawid and Skene model for binary data given uniform priors and then
+ * reparameterized to the log odds scale.
+ *
+ * The model is hard coded for five annotators, each of whom annotates
+ * every item.
+ *
+ * Dawid, A. P., & Skene, A. M. (1979) Maximum likelihood estimation
+ * of observer error-rates using the EM algorithm. *Applied
+ * Statistics*, 20--28.
+ *
+ * Copyright (2019) Bob Carpenter.  Released under BSD 3-clause license.
+ */
 functions {
   int[] total_response_counts(int[ , ] y) {
     int total_counts[6] = rep_array(0, 6);  // indexing + 1
