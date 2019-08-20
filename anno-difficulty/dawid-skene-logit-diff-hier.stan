@@ -60,7 +60,7 @@ model {
 
   sigma_beta ~ normal(0, 0.5);
   beta_std ~ normal(0, 1);
-  sum(beta) ~ normal(0, 1);
+  sum(beta) ~ normal(0, 10);
 
   // marginalized log likelihood: log p(y | theta, beta, pi)
   for (i in 1:I)
