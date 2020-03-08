@@ -103,7 +103,7 @@ and functions that denote values.  In MiniStan, the set
 * $f(e_1, \ldots, e_N) \in \textsf{Expression}$ if
   $f : \textsf{real}(
           \underbrace{\textsf{real}, \ldots, \textsf{real}}
-	             _{N \ \textrm{times}})$,
+                     _{N \ \textrm{times}})$,
   and $e_1, \ldots, e_N \in \textsf{Expression}.$
 
 In practice, values cannot be used directly and must be expressed
@@ -129,7 +129,7 @@ environment $\Gamma$, defined by
   $f' : \textsf{Value}_{\texttt{real}}^N \rightarrow
         \textsf{Value}_{\texttt{real}}$ is the denotation of $f$
 
-MiniStan only has sampling statements, so that the set
+MiniStan is restricted to sampling statements.  The set
 $\textsf{Statement}$ of statements is the smallest such that
 
 * $e_0 \sim f(e_1, \ldots, e_N)\texttt{;} \in \textsf{Statement}$
@@ -165,42 +165,66 @@ The set $\textsf{Program}$ is the smallest such that
  used in the model block is declared.
 
 The denotation of a MiniStan program $p \in \textsf{Program}$ is a
-function $[\![p]\!]: \mathbb{R}^M \rightarrow \mathbb{R}^N \rightarrow
-\mathbb{R}$.  Given $y \in \mathbb{R}^M$ and $\theta \in
-\mathbb{R}^N$, define an environment $\Gamma$ such that
+function
+$$
+[\![p]\!]: \mathsf{Value}_{\texttt{real}}^M
+  \rightarrow
+  (\mathsf{Value}_{\texttt{real}}^N \rightarrow
+\mathbb{R})
+$$
+that maps a data vector $y$ to a log density function $[\![ p
+]\!](y)$, which in turn maps a parameter vector $\theta$ to a log
+density $[\![ p ]\!](y)(\theta)$.  Letting $\pi$ be the posterior
+density for parameters $\theta$ given data $y$, the denotation of a
+Stan program is
+$$
+[\![ p ]\!](y)(\theta) = \log \pi(\theta \mid y) + \textrm{const.},
+$$
+where $\textrm{const}$ does not depend on $\theta$.
+
+An environment is a mapping from variables to values.  Given $y \in
+\mathbb{R}^M$ and $\theta \in \mathbb{R}^N$, define an environment
+$\Gamma$ such that
 $$
 \Gamma_{y,\theta}(v)
 =
 \begin{cases}
 y_m & \textrm{if} \ d_m = \texttt{real} \ v;
-\\
+\\[4pt]
 \theta_n & \textrm{if} \ u_n = \texttt{real} \ v;
-\\
+\\[4pt]
 \textrm{undefined} & \textrm{otherwise}.
 \end{cases}
 $$
 
-Given this environment, the denotation of a Stan program may be
-defined by
+A MiniStan program $p$ has a denotation $[\![ p ]\!]$ defined by
 $$
-[\![p]\!]
-(y)(\theta)
-= \sum_{j = 1}^J {}_{\Gamma_{y, \theta}}[\![ f(e_{j,0}, e_{j,1}, \ldots, e_{j,K_j}) ]\!]
+[\![ p ]\!](y, \theta) = \sum_{j = 1}^J {}_{\Gamma_{y,\theta}}[\![ s_j ]\!],
 $$
-where $s_j = e_{j, 0} \sim f(e_{j, 1}, \ldots, e_{j, K_j});$.  All
-density functions are assumed to be on the log scale so that addition
-is the appropriate combination.
-
-In Bayesian applications, the statements are defined so that $y$ is
-data, $\theta$ are model parameters, and the denotation is equal to
-the log posterior up to a constant that does not depend on $\theta$,
-
+where the $j$-th statement in the program block is
 $$
-[\![p]\!]
-(d)(u)
+s_j = e_{j, 0} \sim f(e_{j, 1}, \ldots, e_{j, K_j})
+$$
+and its contribution to the log density is given by
+$$
+\Gamma_{y,\theta}[\![ s_j ]\!]
 =
-\log p(\theta \mid y) + \textrm{const.}
+\Gamma_{y,\theta}[\![ \, f_j(e_{j, 0}, e_{j, 1}, \ldots, e_{j, K_j}) ]\!].
 $$
+
+In Bayesian applications, given a fixed data set $y$, the posterior
+log density function $[\![ p ]\!](y)$ can be used with a sampler to
+draw a posterior sample
+$$
+\theta^{(1)}, \ldots, \theta^{(S)} \sim \pi(\theta \mid y),
+$$
+or with an optimizer to find a posterior mode,
+$$
+\theta^* = \textrm{arg max}_{\theta} \ \pi(\theta \mid y).
+$$
+With automatic differentiation variables for $\theta$, gradient-based
+algorithms like Hamiltonian Monte Carlo sampling and limited-memory
+quasi-Newton optimization can be used.
 
 
 # Stan
