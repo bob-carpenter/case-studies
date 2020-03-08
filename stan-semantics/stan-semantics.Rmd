@@ -59,7 +59,153 @@ Stan is a *differentiable programming language* in the sense that it a
 Stan program defines a generic log density function that is smooth and
 may be applied to automatic differentiation variables.
 
-# Types
+# MiniStan
+
+The design of Stan was strongly influenced by the design of BUGS.
+In this chapter, a simple BUGS-like version of Stan is defined
+that is simpler still in that it only involves univariate variables
+and does not introduce local variables.  This section lays out
+MiniStan in the same form as the more general Stan is layed out in the
+rest of the document.
+
+All expressions in MiniStan denote single real quantities, so the set of
+types is the singleton
+$$
+\textsf{Type} = \{ \texttt{real} \}.
+$$
+
+Each type has a range of values expressions of that type may have.  In
+MiniStan, there is only one type, expressions of which take values in
+the set $\textsf{Value}_{\textt{real}}$.  The Stan language is
+polymorphic by design and can work with value types including
+floating point and automatic differentiation variables.
+
+MiniStan includes a countably infinite set of variables.  For
+concreteness, and to match Stan's notion of identifier, let
+$$
+\textsf{Variable} = \texttt{a-ZA-Z(a-zA-Z0-9_)*}.
+$$
+
+There is only one type, $\texttt{real}$, which is used for every
+variable.  The variable typing function $\textrm{type} :
+\textsf{Variable} \rightarrow \textsf{Type}$ is thus constant, so that
+$$
+\textrm{type}(v) = \texttt{real}
+$$
+for every $v \in \textsf{Variable}$.
+
+Expressions are mathematical formulas made up of constants, variables,
+and functions that denote values.  In MiniStan, the set
+\textsf{Expression} is defined to be the smallest such that
+
+* $y \in \textsf{Expression}$ if $y \in \mathsf{Value}_{\texttt{real}}$,
+* $v \in \textsf{Expression}$ if $v \in \textsf{Variable}$, and
+* $f(e_1, \ldots, e_N) \in \textsf{Expression}$ if
+  $f : \textsf{real}(
+          \underbrace{\textsf{real}, \ldots, \textsf{real}}
+	             _{N \ \textrm{times}})$,
+  and $e_1, \ldots, e_N \in \textsf{Expression}.$
+
+In practice, values cannot be used directly and must be expressed
+using a literal syntax, such as standard computational scientific
+notation for real numbers (e.g., `-1.3e-12` for $-1.3 \times
+10^{-12}$), which is then translated into the value type.
+
+An environment is a mapping from variables to values, which for
+MiniStan reduces to a simple function
+$\Gamma : \textsf{Variable}_{\texttt{real}}
+          \rightarrow \textsf{Value}_{\texttt{real}}$.
+
+Expressions have denotations in their value types relative to an
+environment $\Gamma$, defined by
+
+* ${}_{\Gamma}[\![ y ]\!] = y$
+  if $y \in \textsf{Value}_{\texttt{real}}$,
+* ${}_{\Gamma}[\![ v ]\!] = \Gamma(v)$
+  if $v \in \textsf{Variable}_{\texttt{real}}$, and
+* ${}_{\Gamma}[\![ f(e_1, \ldots, e_N)]\!]
+   = f'({}_{\Gamma}[\![ e_1 ]\!], \ldots
+        {}_{\Gamma}[\![ e_N ]\!])$ where
+  $f' : \textsf{Value}_{\texttt{real}}^N \rightarrow
+        \textsf{Value}_{\texttt{real}}$ is the denotation of $f$
+
+MiniStan only has sampling statements, so that the set
+$\textsf{Statement}$ of statements is the smallest such that
+
+* $e_0 \sim f(e_1, \ldots, e_N)\texttt{;} \in \textsf{Statement}$
+  if $e_0, e_1, \ldots, e_N \in \textsf{Expression}_{\texttt{real}}$
+  and $f' : (\textsf{Value}_{\texttt{real}})^{N + 1} \rightarrow
+        \textsf{Value}_{\texttt{real}}.$
+
+The other content of a MiniStan program is a variable
+declaration.  The set $\textsf{Declaration}$ of variable declarations
+is the least such that
+
+* $\texttt{real} \ v\texttt{;} \in \textsf{Declaration}$ if $v \in
+  \textsf{Variable}$.
+
+A MiniStan program consists of three blocks,
+
+* a data block declaring variables that are known and read in
+externally,
+* a parameters block declaring parameters that are unknown and for
+which inference is desired, and
+* a model block defining a log density.
+
+The set $\textsf{Program}$ is the smallest such that
+
+* $\texttt{data \{} d_1, \ldots, d_M \texttt{\}}$
+  $\texttt{parameters \{} u_1, \ldots, u_N \texttt{\}}$
+  $\ \texttt{model \{} s_1, \ldots, s_J \texttt{\}}
+   \in \textsf{Program}$ if
+ $d_1, \ldots d_M \in \textsf{Declaration}$,
+ $u_1, \ldots u_N \in \textsf{Declaration}$,
+ $s_1, \ldots s_J \in \textsf{Statement}$,
+ no variable is declared more than once, and every variable
+ used in the model block is declared.
+
+The denotation of a MiniStan program $p \in \textsf{Program}$ is a
+function $[\![p]\!]: \mathbb{R}^M \rightarrow \mathbb{R}^N \rightarrow
+\mathbb{R}$.  Given $y \in \mathbb{R}^M$ and $\theta \in
+\mathbb{R}^N$, define an environment $\Gamma$ such that
+$$
+\Gamma_{y,\theta}(v)
+=
+\begin{cases}
+y_m & \textrm{if} \ d_m = \texttt{real} \ v;
+\\
+\theta_n & \textrm{if} \ u_n = \texttt{real} \ v;
+\\
+\textrm{undefined} & \textrm{otherwise}.
+\end{cases}
+$$
+
+Given this environment, the denotation of a Stan program may be
+defined by
+$$
+[\![p]\!]
+(y)(\theta)
+= \sum_{j = 1}^J {}_{\Gamma_{y, \theta}}[\![ f(e_{j,0}, e_{j,1}, \ldots, e_{j,K_j}) ]\!]
+$$
+where $s_j = e_{j, 0} \sim f(e_{j, 1}, \ldots, e_{j, K_j});$.  All
+density functions are assumed to be on the log scale so that addition
+is the appropriate combination.
+
+In Bayesian applications, the statements are defined so that $y$ is
+data, $\theta$ are model parameters, and the denotation is equal to
+the log posterior up to a constant that does not depend on $\theta$,
+
+$$
+[\![p]\!]
+(d)(u)
+=
+\log p(\theta \mid y) + \textrm{const.}
+$$
+
+
+# Stan
+
+## Types
 
 Every variable in Stan is declared with a type that is known
 statically.  From the types of variables, the type of an expression
@@ -78,6 +224,19 @@ The set $\textsf{BasicType}$ is the least such that
 * $\texttt{vector}, \texttt{row_vector}, \texttt{matrix} \in
   \textsf{BasicType}$, and
 * $T[] \in \textsf{BasicType}$ if $T \in \textsf{BasicType}$.
+
+The number of dimensions of a type is given by the function
+$\textrm{dim}:\textsf{BasicType} \rightarrow \mathbb{N}$ defined
+inductively by
+
+* $\textrm{dim}(\texttt{real})
+   = \textrm{dim}(\texttt{int})
+   = 0$
+* $\textrm{dim}(\texttt{vector})
+   = \textrm{dim}(\texttt{row_vector})
+   = 1$,
+* $\textrm{dim}(\texttt{matrix}) = 2$, and
+* $\textrm{dim}(T[]) = 1 + \textrm{dim}(T)$.
 
 The set $\textsf{SizedType}$ is the least such that
 
@@ -121,7 +280,7 @@ the least such that
 * $T_0(T_1, \ldots, T_N) \in \textsf{FunctionType}$ if
   $T_0, T_1, \ldots, T_N \in \textsf{FunctionType} \cup \textsf{BasicType}$.
 
-# Variables, expressions, and type inference
+## Variables, expressions, and type inference
 
 Expressions are syntactic constructs that denote values.  Stan assumes
 there is some computational approximation of a real-valued field (in
@@ -144,17 +303,17 @@ The set $\textsf{Expression}$ is the least such that
    $f, e_1, \ldots, e_n \in \textsf{Expression}$.
 
 The *typing relation* $:$ is defined relative to a variable typing
-function $\Psi : \textsf{Variable} \rightarrow \textsf{Type}$ as the
+function $\textrm{type} : \textsf{Variable} \rightarrow \textsf{Type}$ as the
 smallest relation such that
 
 * $y : \texttt{real}$ if $y \in \mathbb{R} \cup \{ -\infty,
   +\infty, \textrm{NaN} \}$,
 * $n : \texttt{int}$ if $n \in \mathbb{Z}$,
-* $v : T$ if $v \in \textsf{Variable}$ and $\Psi(v) = T$
+* $v : T$ if $v \in \textsf{Variable}$ and $\textrm{type}(v) = T$
 * $f(e_1, \ldots, e_n) : T_0$ if
    $f : T_0(T_1, \ldots, T_N)$ and $e_1:T_1, \ldots, e_N:T_n$.
 
-# Values of types
+## Values of types
 
 Expressions take on values in a range that is determined by their
 type.  The sets of possible values $\textsf{Value}_T$ for each sized
@@ -181,16 +340,16 @@ Possible values for unsized types are the union of their sized counterparts,
   = \bigcup_{k \in \mathbb{N}} \textsf{Value}_{T[k]}$
 
 
-# Environments and denotations
+## Environments and expression denotations
 
 Given an expression $e$ of type $T$, its denotation will be an element
 of $\textsf{Value}_T$.  An *environment* is a function
 $\Gamma: \textrm{Variable} \rightarrow \textrm{Value}$.  Relative to
 an environment $\Gamma$, an expression $e$ of type $T$ has a denotation
-${}_\Gamma[\![ e ]\!] \in \textrm{Value}_T$ defined by.
+${}_\Gamma[\![ e ]\!] \in \textrm{Value}_T$ defined by
 
 * ${}_\Gamma[\![ y ]\!]
-  = y$ if $y \in \mathbb{R} \cup \{-\infty, \infty, \textrm{NaN} \},
+  = y$ if $y \in \mathbb{R} \cup \{-\infty, \infty, \textrm{NaN} \}$,
 * ${}_\Gamma[\![ n ]\!]
   = n$ if $n \in \mathbb{Z}$,
 * ${}_\Gamma[\![ v ]\!]
@@ -198,6 +357,40 @@ ${}_\Gamma[\![ e ]\!] \in \textrm{Value}_T$ defined by.
 * ${}_\Gamma[\![ f(e_1, \ldots, e_N) ]\!]
   = {}_\Gamma[\![f]\!]({}_\Gamma[\![e_1]\!], \ldots, {}_\Gamma[\![e_N]\!])$
     if $f : T_0(T_1, \ldots, T_N)$ and $e_1 : T_1, \ldots, e_N: T_N$.
+
+## Lvalues
+
+Lvalues are the set of expressions that may appear on the left hand
+side of an assignment statement.  The set $\textsf{Lvalue}$ is defined
+to be the least such that
+
+* $v \in \textsf{Lvalue}$ if $v \in \textsf{Variable}$ and
+* $v[i_1, \ldots, i_N] \in \textsf{Lvalue}$ if $v \in
+  \textsf{Variable}$, $\textrm{dim}(\textrm{type}(v)) \geq N$, and
+  $i_1, \ldots, i_N \in \mathbb{N}$.
+
+## Variable declarations
+
+The set \textsf{Declaration} of variable declarations is the smallest
+such that
+
+* $T v \in \textsf{Declaration}$
+  if $T \in \textsf{Type}$ and $v \in \textsf{Variable}$
+
+## Statements
+
+The set $\textsf{Statement}$ is the smallest such that
+
+* $l = e \in \textsf{Statement}$ <br />
+  if $l \in \textsf{Lvalue}_T$ and $e \in \textsf{Expression}_T$,
+* $y \sim \ p(\theta_1, \ldots, \theta_N) \in \textsf{Statement}$  <br />
+  if $p : \texttt{real}(T_0, T_1, \ldots, T_N),
+      y : T_0, \theta_1 : T_1, \ldots, \theta_N : T_N$,
+* $\{ d_1; \cdots d_M; s_1; \cdots s_N; \} \in \textsf{Statement}$  <br />
+  if $d_1, \ldots, d_M \in \textsf{Declaration}$
+  and $s_1, \ldots, s_N \in \textsf{Statement}$,
+
+
 
 <br />
 
