@@ -1,0 +1,204 @@
+---
+title: "Semantics for the Stan probabilistic programming language"
+author: "Bob Carpenter"
+date: "March 2020"
+output:
+  tufte::tufte_html:
+    toc: false
+    toc_depth: 1
+---
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+library(tufte)
+
+knitr::opts_chunk$set(
+  include = TRUE,  cache = FALSE,  collapse = TRUE,  echo = TRUE,
+  message = FALSE, tidy = FALSE,  warning = FALSE,   comment = "  ",
+  dev = "png", dev.args = list(bg = '#FFFFF8'), dpi = 300,
+  fig.align = "center",  fig.width = 7,  fig.asp = 0.618,  fig.show = "hold",
+  out.width = "90%")
+```
+
+## Abstract {-}
+
+This paper defines an operational semantics for the full Stan
+programming language including type declaration and inference,
+expression evaluation, statement evaluation, block evaluation, and
+user-defined functions.
+
+<small>
+*Keywords:* probabilistic programming, statistical inference,
+programming language semantics
+</small>
+
+# Overview
+
+Stan is a domain-specific imperative programming language for
+statistical models.  In its reference implementation, Stan is
+translated to C++ to produce a differentiable log density function
+which may be used for Bayesian and classical inference using
+algorithms such as Hamiltonian Monte Carlo, quasi-Newton optimization
+with bootstrap or Laplace approximation, and automatic differentiation
+variational inference.
+
+Stan is strongly statically typed, with variables defined at program
+scope partitioned into
+
+* known quantities (e.g., constants and observed data),
+* unkown variables which must be inferred (e.g., model parameters
+and missing data),
+* transformed variables (e.g., transforms of data or parameters), and
+* generated quantities (e.g., predictions and event probabilities).
+
+Local variables may be used at block scope and in function arguments.
+
+Stan is a *probabilistic programming language* in the sense that
+programs define log posteriors or log likelihoods and variables
+representing unknowns behave as random variables during inference.
+Stan is a *differentiable programming language* in the sense that it a
+Stan program defines a generic log density function that is smooth and
+may be applied to automatic differentiation variables.
+
+# Types
+
+Every variable in Stan is declared with a type that is known
+statically.  From the types of variables, the type of an expression
+may be inferred.
+
+In addition to function types, there are three classes of types in
+Stan:
+
+* basic types, used for function argument declarations,
+* sized types, used for local variable declarations, and
+* constrained types, used for block variable declarations.
+
+The set $\textsf{BasicType}$ is the least such that
+
+* $\texttt{real}, \texttt{int} \in \textsf{BasicType}$,
+* $\texttt{vector}, \texttt{row_vector}, \texttt{matrix} \in
+  \textsf{BasicType}$, and
+* $T[] \in \textsf{BasicType}$ if $T \in \textsf{BasicType}$.
+
+The set $\textsf{SizedType}$ is the least such that
+
+* $\texttt{real}, \texttt{int} \in \textsf{SizedType}$,
+* $\texttt{vector}[n] \in \textsf{SizedType}$ if $n \in \mathbb{N}$,
+* $\texttt{row_vector}[m] \in \textsf{SizedType}$ if $m \in \mathbb{N}$,
+* $\texttt{matrix}[m, n] \in \textsf{SizedType}$ if $m, n \in
+  \mathbb{N}$, and
+* $T[n] \in \textsf{SizedType}$ if $T \in \textsf{SizedType}$ and $n
+  \in \mathbb{N}$.
+
+Each sized type corresponds to the basic type derived by removing the sizes.
+
+The set $\textsf{ConstrainedType}$ is the least such that
+
+* $\texttt{real}, \texttt{int} \in \textsf{ConstrainedType}$,
+* $\texttt{vector}[n], \texttt{unit_vector}[n]$, $\texttt{simplex}[n],
+  \texttt{ordered}[n]$, $\texttt{pos_ordered}[n] \in \textsf{ConstrainedType}$
+  if $n \in \mathbb{N}$,
+* $\texttt{row_vector}[m] \in \textsf{ConstrainedType}$ if $m \in \mathbb{N}$,
+* $\texttt{matrix}[m, n] \in \textsf{ConstrainedType}$ if $m, n \in
+  \mathbb{N}$, and
+* $\texttt{cov_matrix}[m], \texttt{corr_matrix}[n]$,
+  $\texttt{cholesky_factor}[n]$, $\texttt{cholesky_factor_corr}[n] \in
+  \textsf{ConstrainedType}$ if $m, n \in \mathbb{N}$, and
+* $T[] \in \textsf{ConstrainedType}$ if $T \in \textsf{ConstrainedType}$.
+
+Each constrained type corresponds to a sized type that is derived by
+dropping the constraint.  Specifically,
+
+* $\texttt{vector}[n]$ is the sized type for the constrained types
+  $\texttt{unit_vector}[n]$,  $\texttt{simplex}[n]$,
+  $\texttt{ordered}[n]$, and $\texttt{pos_ordered}[n]$; and
+* $\texttt{matrix}[n, n]$ is the sized type for the constrained types
+  $\texttt{cov_matrix}[m]$, $\texttt{corr_matrix}[n]$,
+  $\texttt{cholesky_factor}[n]$, and $\texttt{cholesky_factor_corr}[n]$.
+
+Stan uses simply typed functions.  The set $\textsf{FunctionType}$ is
+the least such that
+
+* $T_0(T_1, \ldots, T_N) \in \textsf{FunctionType}$ if
+  $T_0, T_1, \ldots, T_N \in \textsf{FunctionType} \cup \textsf{BasicType}$.
+
+# Variables, expressions, and type inference
+
+Expressions are syntactic constructs that denote values.  Stan assumes
+there is some computational approximation of a real-valued field (in
+the algebraic sense) over which real-valued expressions take their
+value.  Integers are assumed to be a subset of the real values.  In
+practice, real values are representated using fixed-size floating
+point numbers and fixed size integers for constants and data and
+automatic differentiation variables for parameters.
+
+The set $\textsf{Variable}$ consists of a countably infinite set of
+unique identifiers.
+
+The set $\textsf{Expression}$ is the least such that
+
+* $y \in \textsf{Expression}$ if $y \in \mathbb{R} \cup \{ -\infty,
+  +\infty, \textrm{NaN} \}$,
+* $n \in \textsf{Expression}$ if $n \in \mathbb{Z}$,
+* $v \in \mathsf{Expression}$ if $v \in \textsf{Variable}$, and
+* $f(e_1, \ldots, e_n) \in \textsf{Expression}$ if
+   $f, e_1, \ldots, e_n \in \textsf{Expression}$.
+
+The *typing relation* $:$ is defined relative to a variable typing
+function $\Psi : \textsf{Variable} \rightarrow \textsf{Type}$ as the
+smallest relation such that
+
+* $y : \texttt{real}$ if $y \in \mathbb{R} \cup \{ -\infty,
+  +\infty, \textrm{NaN} \}$,
+* $n : \texttt{int}$ if $n \in \mathbb{Z}$,
+* $v : T$ if $v \in \textsf{Variable}$ and $\Psi(v) = T$
+* $f(e_1, \ldots, e_n) : T_0$ if
+   $f : T_0(T_1, \ldots, T_N)$ and $e_1:T_1, \ldots, e_N:T_n$.
+
+# Values of types
+
+Expressions take on values in a range that is determined by their
+type.  The sets of possible values $\textsf{Value}_T$ for each sized
+type $T \in \textsf{SizedType}$ is defined jointly by
+
+* $\textsf{Value}_{\texttt{int}} = \mathbb{Z}$,
+* $\textsf{Value}_{\texttt{real}} = \mathbb{R}$,
+* $\textsf{Value}_{\texttt{vector}[n]} = \mathbb{R}^n$,
+* $\textsf{Value}_{\texttt{row_vector}[m]} = \mathbb{R}^m$,
+* $\textsf{Value}_{\texttt{matrix}[m, n]} = \mathbb{R}^{m \times n}$,
+* $\textsf{Value}_{T[k]} = (\textsf{Value}_T)^k$, and
+* $\textsf{Value}_{T_0(T_1, \ldots, T_N)}
+  = (\textsf{Value}_{T_1} \times \cdots \times \textsf{Value}_{T_N})
+    \rightarrow \textsf{Value}_{T_N})$.
+
+Possible values for unsized types are the union of their sized counterparts,
+
+* $\textsf{Value}_{\texttt{vector}[]}
+  = \bigcup_{n \in \mathbb{N}} \textsf{Value}_{\texttt{vector}[n]}$
+* $\textsf{Value}_{\texttt{matrix}}
+  = \bigcup_{m, n \in \mathbb{N}}
+    \textsf{Value}_{\texttt{matrix}[m, n]}$
+* $\textsf{Value}_{T[]}
+  = \bigcup_{k \in \mathbb{N}} \textsf{Value}_{T[k]}$
+
+
+# Environments and denotations
+
+Given an expression $e$ of type $T$, its denotation will be an element
+of $\textsf{Value}_T$.  An *environment* is a function
+$\Gamma: \textrm{Variable} \rightarrow \textrm{Value}$.  Relative to
+an environment $\Gamma$, an expression $e$ of type $T$ has a denotation
+${}_\Gamma[\![ e ]\!] \in \textrm{Value}_T$ defined by.
+
+* ${}_\Gamma[\![ y ]\!]
+  = y$ if $y \in \mathbb{R} \cup \{-\infty, \infty, \textrm{NaN} \},
+* ${}_\Gamma[\![ n ]\!]
+  = n$ if $n \in \mathbb{Z}$,
+* ${}_\Gamma[\![ v ]\!]
+  = \Gamma(v)$ if $v \in \textsf{Variable}$, and
+* ${}_\Gamma[\![ f(e_1, \ldots, e_N) ]\!]
+  = {}_\Gamma[\![f]\!]({}_\Gamma[\![e_1]\!], \ldots, {}_\Gamma[\![e_N]\!])$
+    if $f : T_0(T_1, \ldots, T_N)$ and $e_1 : T_1, \ldots, e_N: T_N$.
+
+<br />
+
+<br />
