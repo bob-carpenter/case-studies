@@ -224,7 +224,10 @@ $$
 $$
 With automatic differentiation variables for $\theta$, gradient-based
 algorithms like Hamiltonian Monte Carlo sampling and limited-memory
-quasi-Newton optimization can be used.
+quasi-Newton optimization can be used, because it is relatively inexpensive to
+accurately compute $\nabla_{\theta} \log p(\theta \mid y)$.
+
+
 
 
 # Stan
