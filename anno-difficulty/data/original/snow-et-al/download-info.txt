@@ -1,0 +1,11 @@
+Snow et al. 2008. Cheap and Fast -- But is it Good?
+Evaluating Non-Expert Annotations for Natural Language Tasks.
+EMNLP.
+
+Date Downloaded: April 23, 2020
+
+Top level site:
+https://sites.google.com/site/nlpannotations/
+
+Link to data:
+https://sites.google.com/site/nlpannotations/all_collected_data.tgz
