@@ -21,48 +21,301 @@ knitr::opts_chunk$set(
 
 ## Abstract {-}
 
-This paper defines an operational semantics for the full Stan
-programming language including type declaration and inference,
-expression evaluation, statement evaluation, block evaluation, and
-user-defined functions.
+<small>
+Fe, fi, fo, fum.
+</small>
 
 <small>
 *Keywords:* probabilistic programming, statistical inference,
 programming language semantics
 </small>
 
-# Overview
+
+
+# Introduction
+
+This paper introduces a denotational and operational semantics for Stan,
+a differentiable probabilistic programming language.
+
+## About Stan
 
 Stan is a domain-specific imperative programming language for
-statistical models.  In its reference implementation, Stan is
-translated to C++ to produce a differentiable log density function
-which may be used for Bayesian and classical inference using
-algorithms such as Hamiltonian Monte Carlo, quasi-Newton optimization
-with bootstrap or Laplace approximation, and automatic differentiation
-variational inference.
+statistical models.  Stan is a *probabilistic programming language* in
+the sense that programs define log posteriors or log likelihoods and
+variables representing unknowns behave as random variables during
+inference.  Stan is a *differentiable programming language* in the
+sense that it a Stan program defines a generic log density function
+that is smooth and may be applied to automatic differentiation
+variables.
 
-Stan is strongly statically typed, with variables defined at program
-scope partitioned into
+Stan is strongly statically typed.  Variables at program scope are
+partitioned according to whether they are 
 
 * known quantities (e.g., constants and observed data),
-* unkown variables which must be inferred (e.g., model parameters
-and missing data),
-* transformed variables (e.g., transforms of data or parameters), and
+* unkown quantities (e.g., model parameters and missing data),
+* transformed variables (e.g., transforms of data or parameters), or
 * generated quantities (e.g., predictions and event probabilities).
 
-Local variables may be used at block scope and in function arguments.
+Statements are used to update a target log density, which represents
+the log density of the parameters (unknown variables) conditioned on data
+(known variables), and to define the transformed variables and
+generated quantities.
 
-Stan is a *probabilistic programming language* in the sense that
-programs define log posteriors or log likelihoods and variables
-representing unknowns behave as random variables during inference.
-Stan is a *differentiable programming language* in the sense that it a
-Stan program defines a generic log density function that is smooth and
-may be applied to automatic differentiation variables.
+The full range of control flow is available including conditionals,
+for and while loops, and recursive user-defined functions.  Local
+variables may be used at block scope and in function arguments.
+
+
+## Stan reference implementation
+
+Stan was designed, built and put into production before it was
+formally specified.  The [Stan Reference Manual
+(v2.23)](https://mc-stan.org/docs/2_23/reference-manual/index.html)
+informally describes the concrete syntax and semantics of the
+reference implementation.  The goal of this paper is to precisely
+codfiy the semantics of the Stan language.  As such, it is intended to
+be consistent with the existing reference implementation.
+
+In its reference implementation, Stan is translated to C++ to produce
+a class definition with a constructor that reads and stores the data
+immutably, along with a templated log density method that may be
+automatically differentiated.  The reference implementation is backed
+by several state-of-the-art forms of inference that rely on gradients
+and Hessians: adaptive Hamiltonian Monte Carlo for Bayesian inference,
+gradient-based variational methods for approximate Bayesian inference,
+and quasi-Newton optimization methods for point estimation with
+bootstrap uncertainty or Laplace approximation.^[There have been two
+implementations of the Stan language.  The first, coded in C++ using
+the Boost Spirit Qi framework, only targeted the Stan math library for
+output.  The second, coded in OCaml using the Menhir framework, has a
+code generator for the Stan math library and a prototype code
+generator for TensorFlow Probability.]
+
+
+## Stepwise approach
+
+The paper begins with an overview of the simplest meaningful fragment
+of Stan, which consists of unconstrained real-valued data variables,
+parameter variables, and sampling statements.^[Not coincidentally,
+this was also the first functionality implemented in the Stan language
+parser, abstract syntax tree, and code generator.]
+
+The second sublanguage adds local variables and assignment statements,
+along with transformed data and transformed parameter variables.
+
+The third sublanguage adds data types for integers,
+matrices and vectors, and arrays of arbitrary dimension.
+
+The fourth sublanguage adds control flow in the form of loops and
+conditionals.^[At this point, the full range of BUGS control flow and
+more is available.]
+
+The fifth sublanguage adds constrained variable types, such as
+positive-constrained variables, simplexes, or covariance matrices.
+Each constrained type is associated with a smooth, monotonic
+transform.  Stan automatically applies the change-of-variables
+adjustment for the constraining transform.^[At this point, BUGS models
+that do not involve integer parameters may be translated directly to
+Stan.]
+
+The sixth sublanguage adds a generated quantities block for posterior
+predictive quantities defined as transforms and random generation from
+data and parameters.
+
+The seventh sublanguage adds user-defined functions and
+closures.^[Stan uses simple higher-order types and thus cannot suppor
+the rich parametric polymorphism found in languages like ML.]
+
+Parallel computation and the use of GPUs is handled in the target
+generated code rather than in the language.
+
+
+# Overview
+
+
+# MiniStan Sequent Calculus
+
+## Objects
+
+\[
+L \in \textsf{NumericLiteral}
+\]
+
+$$
+V \in \textsf{Variable}
+$$
+
+$$
+T \in \textsf{Type} ::= \texttt{real}
+$$
+
+$$
+D \in \textsf{Declaration}
+\ \begin{array}[t]{rl}
+::=  & \epsilon
+\\
+\mid & V : T
+\\
+\mid & D_1, D_2
+\end{array}
+$$
+
+$$
+E \in \textsf{Expression}
+\
+\begin{array}[t]{rl}
+::=  & L \\
+\mid & V \\
+\mid & F(E_1, \ldots, E_n) \quad [n \geq 0]
+\end{array}
+$$
+
+
+$$
+S \in \textsf{Statement}
+\
+\begin{array}[t]{rl}
+::=    & \epsilon \\
+\mid   & \texttt{target +=} E \\
+\mid   & S_1, S_2
+\end{array}
+$$
+
+$$
+P \in \textsf{Program}
+::=        \texttt{data}       \ \, D_1,
+    \ \, \texttt{parameters} \ \, D_2,
+    \ \, \texttt{model}      \ \, S
+$$
+
+$$
+\Gamma \in \textsf{TypeEnvironment}
+\
+\begin{array}[t]{rl}
+::=  &  \epsilon \\
+\mid &  V : T \\
+\mid &  \Gamma_1, \Gamma_2
+\end{array}
+$$
+
+## Type inference
+
+$$
+\frac
+  {}
+  {V:T \vdash V:T}
+  (1)
+$$
+
+$$
+\frac
+  {\Gamma_1 \vdash V:T}
+  {\Gamma_1, \, \Gamma_2 \vdash V:T}
+  (\textrm{2a})
+\qquad
+\frac
+  {\Gamma_2 \vdash V:T}
+  {\Gamma_1, \, \Gamma_2 \vdash V:T}
+  (\textrm{2b})
+$$
+
+$$
+\frac{\Gamma \vdash F:(T_1 \times \cdots \times T_N) \rightarrow T_0
+      \qquad
+      \Gamma \vdash E_1 : T_1
+      \quad \cdots \quad
+      \Gamma \vdash E_N : T_N}
+     {\Gamma \vdash F(E_1, \ldots, E_N) : T_0}
+     (3)
+$$     
+      
+## Evaluation
+
+### Expression evaluation
+
+$$
+\frac
+  {}
+  {N, \sigma \Downarrow n}
+  (1)
+$$
+
+$$
+\frac
+  {\sigma(V) = v}
+  {V, \sigma \Downarrow v}
+  (2)
+$$
+
+$$
+\frac{\sigma(F) = f
+      \qquad
+      E_1, \sigma \Downarrow v_1
+      \quad \cdots \quad
+      E_N, \sigma \Downarrow v_N}
+      {F(E_1, \ldots, E_N), \sigma \Downarrow f(v_1, \ldots v_N)}
+      (3)
+$$
+
+### Statement evaluation
+
+$$
+\frac
+  {E, \sigma \Downarrow e}
+  {\sigma, \texttt{target}\,\texttt{+=} \ E
+   \Downarrow \sigma[{\small \textrm{target} = \textrm{target} + e}]}
+  (1)
+$$  
+
+$$
+\frac
+  {}
+  {\epsilon, \sigma \Downarrow \sigma}
+  (2)
+$$  
+
+$$
+\frac{S_1, \sigma_1 \Downarrow \sigma_2
+      \qquad
+      S_2, \sigma_2 \Downarrow \sigma_3}
+      {(S_1, S_2), \sigma_1 \Downarrow \sigma_3}
+      (3)
+$$      
+
+### Declaration evaluation
+
+$$
+\frac
+  {}
+  {\Gamma, \epsilon \vdash \Gamma}
+  (1)
+$$
+
+$$
+\frac
+  {\Gamma_1, D_1 \Downarrow \Gamma_2
+   \qquad
+   \Gamma_2, D_2 \Downarrow \Gamma_3}
+  {\Gamma_1, (D_1, D_2) \Downarrow \Gamma_3}
+  (2)
+$$
+
+$$
+\frac
+  {}
+  {V{:}T, \Gamma_1 \Downarrow V{:}T, \Gamma_1}
+  (3)
+$$
+
+### Program evaluation
+
+
+
 
 # MiniStan
 
 The design of Stan was strongly influenced by the design of BUGS.
-In this chapter, a simple BUGS-like version of Stan is defined
+In this section, a simple BUGS-like version of Stan is defined
 that is simpler still in that it only involves univariate variables
 and does not introduce local variables.  This section lays out
 MiniStan in the same form as the more general Stan is layed out in the
@@ -224,10 +477,9 @@ $$
 $$
 With automatic differentiation variables for $\theta$, gradient-based
 algorithms like Hamiltonian Monte Carlo sampling and limited-memory
-quasi-Newton optimization can be used, because it is relatively inexpensive to
-accurately compute $\nabla_{\theta} \log p(\theta \mid y)$.
-
-
+quasi-Newton optimization can be used, because it is relatively
+inexpensive to accurately compute $\nabla_{\theta} \log p(\theta \mid
+y)$.
 
 
 # Stan
