@@ -1,5 +1,5 @@
 ---
-title: "Semantics for the Stan probabilistic programming language"
+title: "Operational semantics for the Stan probabilistic programming language"
 author: "Bob Carpenter"
 date: "March 2020"
 output:
@@ -34,7 +34,7 @@ programming language semantics
 
 # Introduction
 
-This paper introduces a denotational and operational semantics for Stan,
+This paper introduces a big-step operational semantics for Stan,
 a differentiable probabilistic programming language.
 
 ## About Stan
@@ -133,9 +133,9 @@ generated code rather than in the language.
 # Overview
 
 
-# MiniStan Sequent Calculus
+# Step 1.  Mini Stan
 
-## Objects
+## Abstract Syntax
 
 \[
 L \in \textsf{NumericLiteral}
@@ -150,11 +150,15 @@ T \in \textsf{Type} ::= \texttt{real}
 $$
 
 $$
+F \in \textsf{Function}
+$$
+
+$$
 D \in \textsf{Declaration}
 \ \begin{array}[t]{rl}
 ::=  & \epsilon
 \\
-\mid & V : T
+\mid & V {:} T
 \\
 \mid & D_1, D_2
 \end{array}
@@ -176,7 +180,7 @@ S \in \textsf{Statement}
 \
 \begin{array}[t]{rl}
 ::=    & \epsilon \\
-\mid   & \texttt{target +=} E \\
+\mid   & \texttt{target +=} \ E \\
 \mid   & S_1, S_2
 \end{array}
 $$
@@ -188,63 +192,151 @@ P \in \textsf{Program}
     \ \, \texttt{model}      \ \, S
 $$
 
+## Type inference
+
+*Type environments*
+
 $$
 \Gamma \in \textsf{TypeEnvironment}
 \
 \begin{array}[t]{rl}
 ::=  &  \epsilon \\
-\mid &  V : T \\
+\mid &  V {:} T \\
 \mid &  \Gamma_1, \Gamma_2
 \end{array}
 $$
 
-## Type inference
+*Type calculus*
 
 $$
 \frac
   {}
-  {V:T \vdash V:T}
-  (1)
+  {V{:} T \vdash V{:} T}
 $$
 
 $$
 \frac
-  {\Gamma_1 \vdash V:T}
-  {\Gamma_1, \, \Gamma_2 \vdash V:T}
-  (\textrm{2a})
+  {\Gamma_1 \vdash V{:} T}
+  {\Gamma_1, \, \Gamma_2 \vdash V{:} T}
 \qquad
 \frac
-  {\Gamma_2 \vdash V:T}
-  {\Gamma_1, \, \Gamma_2 \vdash V:T}
-  (\textrm{2b})
+  {\Gamma_2 \vdash V{:} T}
+  {\Gamma_1, \, \Gamma_2 \vdash V{:} T}
 $$
 
 $$
 \frac{\Gamma \vdash F:(T_1 \times \cdots \times T_N) \rightarrow T_0
       \qquad
-      \Gamma \vdash E_1 : T_1
+      \Gamma \vdash E_1 {:} T_1
       \quad \cdots \quad
-      \Gamma \vdash E_N : T_N}
-     {\Gamma \vdash F(E_1, \ldots, E_N) : T_0}
-     (3)
+      \Gamma \vdash E_N {:} T_N}
+     {\Gamma \vdash F(E_1, \ldots, E_N) {:} T_0}
 $$     
-      
-## Evaluation
-
-### Expression evaluation
 
 $$
 \frac
   {}
-  {N, \sigma \Downarrow n}
-  (1)
+  {\Gamma \vdash \epsilon : ()}
+$$
+
+$$
+\frac
+  {\Gamma_1 \vdash
+   D_1 : T_1, \ \Gamma_2
+   \qquad
+   \Gamma_2 \vdash   
+   D_2 : T_2, \ \Gamma_3}
+  {\Gamma_1 \vdash D_1, D_2 : T_1 \times T_2, \ \Gamma_3}
+$$  
+
+
+$$
+\frac
+  {\Gamma_1
+   \vdash D^{\textrm{dat}} : T^{\textrm{dat}}, \Gamma_2
+   \qquad
+   \Gamma_2
+   \vdash D^{\textrm{par}} : T^{\textrm{par}}, \Gamma_3
+   \qquad
+   \Gamma_3 \vdash S : \texttt{void}}
+  {\Gamma_1 \vdash 
+   \texttt{data} \ D^{\textrm{dat}}, \,
+   \ \texttt{parameters} \ D^{\textrm{par}}, \,
+   \ \texttt{model} \ S
+   : T^{\textrm{dat}} \rightarrow T^{\textrm{par}} \rightarrow \texttt{real}}
+$$
+
+## Operational semantics
+
+*Value domain*
+
+$$
+y \in \textsf{Value}_{\texttt{real}}
+  = \mathbb{R}
+$$
+
+$$
+f \in \textsf{Value}_{T_1 \rightarrow T_2}
+  = \textsf{Value}_{T_1} \rightarrow \textsf{Value}_{T_2}
+$$
+
+$$
+x \in T_1 \times T_2
+  = \textsf{Value}_{T_1} \times \textsf{Value}_{T_2}
+$$  
+ 
+
+*Program state*
+
+$$
+\sigma \in \textsf{State} = \textsf{Variable} \rightharpoonup \textsf{Value}
+$$
+
+$$
+\sigma[V_1 = y](V_2)
+= \begin{cases}
+y & \textrm{if} \ V_1 = V_2
+\\
+\sigma(V_2) & \textrm{otherwise}
+\end{cases}
+$$
+
+
+*Declaration calculus*
+
+$$
+\frac
+  {}
+  {\epsilon \Downarrow ()}
+$$
+
+$$
+\frac
+  {}
+  {V{:}T \Downarrow V{:}T}
+$$
+
+$$
+\frac
+  {D_1 \Downarrow \Gamma_1
+   \qquad
+   D_2 \Downarrow \Gamma_2}
+  {D_1, D_2 \Downarrow \Gamma_1, \Gamma_2}
+$$  
+
+
+*Expression calculus*
+
+$$
+\frac
+  {\textrm{val}(L) = x}
+  {L, \sigma \Downarrow x}
 $$
 
 $$
 \frac
   {\sigma(V) = v}
   {V, \sigma \Downarrow v}
-  (2)
 $$
 
 $$
@@ -254,24 +346,22 @@ $$
       \quad \cdots \quad
       E_N, \sigma \Downarrow v_N}
       {F(E_1, \ldots, E_N), \sigma \Downarrow f(v_1, \ldots v_N)}
-      (3)
 $$
 
-### Statement evaluation
+
+*Statement calculus*
 
 $$
 \frac
   {E, \sigma \Downarrow e}
-  {\sigma, \texttt{target}\,\texttt{+=} \ E
+  {\texttt{target}\,\texttt{+=} \ E, \ \sigma
    \Downarrow \sigma[{\small \textrm{target} = \textrm{target} + e}]}
-  (1)
 $$  
 
 $$
 \frac
   {}
   {\epsilon, \sigma \Downarrow \sigma}
-  (2)
 $$  
 
 $$
@@ -279,398 +369,409 @@ $$
       \qquad
       S_2, \sigma_2 \Downarrow \sigma_3}
       {(S_1, S_2), \sigma_1 \Downarrow \sigma_3}
-      (3)
 $$      
 
-### Declaration evaluation
+
+*Program calculus*
 
 $$
 \frac
-  {}
-  {\Gamma, \epsilon \vdash \Gamma}
-  (1)
-$$
-
-$$
-\frac
-  {\Gamma_1, D_1 \Downarrow \Gamma_2
+  {\vdash \texttt{data} \ D^{\textrm{dat}};
+   \ \texttt{parameters} \ D^{\textrm{par}}; \
+   \ \texttt{model} \ S : \texttt{void}
    \qquad
-   \Gamma_2, D_2 \Downarrow \Gamma_3}
-  {\Gamma_1, (D_1, D_2) \Downarrow \Gamma_3}
-  (2)
+   S, \left( \sigma^{\textrm{dat}} \cup \sigma^{\textrm{par}}
+   \right)\![ \textrm{target} = 0 ]
+   \Downarrow \tau}
+  {\texttt{data} \ D^{\textrm{dat}};
+   \ \texttt{parameters} \ D^{\textrm{par}};
+   \ \texttt{model} \ S,
+   \ \left( \sigma^{\textrm{dat}} \cup \sigma^{\textrm{par}}
+   \right) \Downarrow \tau}
 $$
+
+
+# Mini-Stan 2: vectors, row vectors, matrices and arrays
+
+## Abstract syntax
+
+$$
+T \in \textsf{Type}
+\ \begin{array}[t]{rl}
+::=  & \texttt{int}
+\\
+\mid & \texttt{real}
+\\
+\mid & \texttt{vector}
+\\
+\mid & \texttt{rowvector}
+\\
+\mid & \texttt{matrix}
+\\
+\mid & T\texttt{[}\,\texttt{]}
+\end{array}
+$$
+
+
+$$
+E \in \textsf{Expression}
+\ \begin{array}[t]{rl}
+::=  & L
+\\
+\mid & V
+\\
+\mid & F\texttt{(}E_1, \ldots, E_n\texttt{)} \qquad [n \geq 0]
+\\
+\mid & E_1[E_2]
+\\
+\mid & \texttt{\{} E_1, \ldots, E_N \texttt{\}}
+\\
+\mid & \texttt{[} E_1, \ldots, E_N \texttt{]}
+\end{array}
+$$
+
+
+## Type Inference
+
+*Type ordering by assignability*
 
 $$
 \frac
   {}
-  {V{:}T, \Gamma_1 \Downarrow V{:}T, \Gamma_1}
-  (3)
+  {\vdash T \sqsubseteq T}
+$$  
+
+$$
+\frac
+  {\vdash T_1 \sqsubset T_2}
+  {\vdash T_1 \sqsubseteq T_2}
+$$  
+
+$$
+\frac
+  {}
+  {\vdash \texttt{int} \sqsubset \texttt{real}}
 $$
 
-### Program evaluation
-
-
-
-
-# MiniStan
-
-The design of Stan was strongly influenced by the design of BUGS.
-In this section, a simple BUGS-like version of Stan is defined
-that is simpler still in that it only involves univariate variables
-and does not introduce local variables.  This section lays out
-MiniStan in the same form as the more general Stan is layed out in the
-rest of the document.
-
-All expressions in MiniStan denote single real quantities, so the set of
-types is the singleton
 $$
-\textsf{Type} = \{ \texttt{real} \}.
+\frac
+  {\vdash T_1 \sqsubset T_2}
+  {\vdash T_1[] \sqsubset T_2[]}
 $$
 
-Each type has a range of values expressions of that type may have.  In
-MiniStan, there is only one type, expressions of which take values in
-the set $\textsf{Value}_{\textt{real}}$.  The Stan language is
-polymorphic by design and can work with value types including
-floating point and automatic differentiation variables.
 
-MiniStan includes a countably infinite set of variables.  For
-concreteness, and to match Stan's notion of identifier, let
+*Type calculus*
+
 $$
-\textsf{Variable} = \texttt{a-ZA-Z(a-zA-Z0-9_)*}.
+\frac
+  {\Gamma \vdash E : T_1
+   \qquad
+   \vdash T_1 \sqsubseteq T_2}
+  {\Gamma \vdash E : T_2}
 $$
 
-There is only one type, $\texttt{real}$, which is used for every
-variable.  The variable typing function $\textrm{type} :
-\textsf{Variable} \rightarrow \textsf{Type}$ is thus constant, so that
 $$
-\textrm{type}(v) = \texttt{real}
+\frac
+  {\Gamma \vdash E_1 : T
+   \quad \cdots \quad
+   \Gamma \vdash E_N : T}
+  {\Gamma \vdash \{ E_1, \ldots, E_N \} : T[]}
 $$
-for every $v \in \textsf{Variable}$.
 
-Expressions are mathematical formulas made up of constants, variables,
-and functions that denote values.  In MiniStan, the set
-\textsf{Expression} is defined to be the smallest such that
 
-* $y \in \textsf{Expression}$ if $y \in \mathsf{Value}_{\texttt{real}}$,
-* $v \in \textsf{Expression}$ if $v \in \textsf{Variable}$, and
-* $f(e_1, \ldots, e_N) \in \textsf{Expression}$ if
-  $f : \textsf{real}(
-          \underbrace{\textsf{real}, \ldots, \textsf{real}}
-                     _{N \ \textrm{times}})$,
-  and $e_1, \ldots, e_N \in \textsf{Expression}.$
-
-In practice, values cannot be used directly and must be expressed
-using a literal syntax, such as standard computational scientific
-notation for real numbers (e.g., `-1.3e-12` for $-1.3 \times
-10^{-12}$), which is then translated into the value type.
-
-An environment is a mapping from variables to values, which for
-MiniStan reduces to a simple function
-$\Gamma : \textsf{Variable}_{\texttt{real}}
-          \rightarrow \textsf{Value}_{\texttt{real}}$.
-
-Expressions have denotations in their value types relative to an
-environment $\Gamma$, defined by
-
-* ${}_{\Gamma}[\![ y ]\!] = y$
-  if $y \in \textsf{Value}_{\texttt{real}}$,
-* ${}_{\Gamma}[\![ v ]\!] = \Gamma(v)$
-  if $v \in \textsf{Variable}_{\texttt{real}}$, and
-* ${}_{\Gamma}[\![ f(e_1, \ldots, e_N)]\!]
-   = f'({}_{\Gamma}[\![ e_1 ]\!], \ldots
-        {}_{\Gamma}[\![ e_N ]\!])$ where
-  $f' : \textsf{Value}_{\texttt{real}}^N \rightarrow
-        \textsf{Value}_{\texttt{real}}$ is the denotation of $f$
-
-MiniStan is restricted to sampling statements.  The set
-$\textsf{Statement}$ of statements is the smallest such that
-
-* $e_0 \sim f(e_1, \ldots, e_N)\texttt{;} \in \textsf{Statement}$
-  if $e_0, e_1, \ldots, e_N \in \textsf{Expression}_{\texttt{real}}$
-  and $f' : (\textsf{Value}_{\texttt{real}})^{N + 1} \rightarrow
-        \textsf{Value}_{\texttt{real}}.$
-
-The other content of a MiniStan program is a variable
-declaration.  The set $\textsf{Declaration}$ of variable declarations
-is the least such that
-
-* $\texttt{real} \ v\texttt{;} \in \textsf{Declaration}$ if $v \in
-  \textsf{Variable}$.
-
-A MiniStan program consists of three blocks,
-
-* a data block declaring variables that are known and read in
-externally,
-* a parameters block declaring parameters that are unknown and for
-which inference is desired, and
-* a model block defining a log density.
-
-The set $\textsf{Program}$ is the smallest such that
-
-* $\texttt{data \{} d_1, \ldots, d_M \texttt{\}}$
-  $\texttt{parameters \{} u_1, \ldots, u_N \texttt{\}}$
-  $\ \texttt{model \{} s_1, \ldots, s_J \texttt{\}}
-   \in \textsf{Program}$ if
- $d_1, \ldots d_M \in \textsf{Declaration}$,
- $u_1, \ldots u_N \in \textsf{Declaration}$,
- $s_1, \ldots s_J \in \textsf{Statement}$,
- no variable is declared more than once, and every variable
- used in the model block is declared.
-
-The denotation of a MiniStan program $p \in \textsf{Program}$ is a
-function
 $$
-[\![p]\!]: \mathsf{Value}_{\texttt{real}}^M
-  \rightarrow
-  (\mathsf{Value}_{\texttt{real}}^N \rightarrow
-\mathbb{R})
+\frac
+  {\Gamma \vdash E_1 : \texttt{real}
+   \quad \cdots \quad
+   \Gamma \vdash E_N : \texttt{real}}
+  {\Gamma \vdash [ E_1, \ldots, E_N ] : \texttt{rowvector}}
 $$
-that maps a data vector $y$ to a log density function $[\![ p
-]\!](y)$, which in turn maps a parameter vector $\theta$ to a log
-density $[\![ p ]\!](y)(\theta)$.  Letting $\pi$ be the posterior
-density for parameters $\theta$ given data $y$, the denotation of a
-Stan program is
-$$
-[\![ p ]\!](y)(\theta) = \log \pi(\theta \mid y) + \textrm{const.},
-$$
-where $\textrm{const}$ does not depend on $\theta$.
 
-An environment is a mapping from variables to values.  Given $y \in
-\mathbb{R}^M$ and $\theta \in \mathbb{R}^N$, define an environment
-$\Gamma$ such that
 $$
-\Gamma_{y,\theta}(v)
+\frac
+  {\Gamma \vdash E_1 : \texttt{rowvector}
+   \quad \cdots \quad
+   \Gamma \vdash E_N : \texttt{rowvector}}
+  {\Gamma \vdash [ E_1, \ldots, E_N ] : \texttt{matrix}}
+$$
+
+$$
+\frac
+  {\Gamma \vdash E_1:T[] \qquad \Gamma \vdash E_2:\texttt{int}}
+  {\Gamma \vdash E_1[E_2] : T}
+$$  
+
+$$
+\frac
+  {\Gamma \vdash E_1:\texttt{vector} \qquad \Gamma \vdash E_2:\texttt{int}}
+  {\Gamma \vdash E_1[E_2] : \texttt{real}}
+$$  
+
+$$
+\frac
+  {\Gamma \vdash E_1:\texttt{rowvector}
+   \qquad
+   \Gamma \vdash E_2:\texttt{int}}
+  {\Gamma \vdash E_1[E_2] : \texttt{real}}
+$$
+
+$$
+\frac
+  {\Gamma \vdash E_1:\texttt{matrix}
+   \qquad
+   \Gamma \vdash E_2:\texttt{int}}
+  {\Gamma \vdash E_1[E_2] : \texttt{rowvector}}
+$$  
+
+## Operational Semantics
+
+*Value domain*
+
+$$
+i \in \textsf{Value}_{\texttt{int}} = \mathbb{Z}
+$$
+
+$$
+a \in \textsf{Value}_{T[]} = T^* = \cup_{n = 0}^{\infty} T^n
+$$
+
+$$
+v \in \textsf{Value}_{\texttt{vector}} = \mathbb{R}^*
+$$
+
+$$
+u \in \textsf{Value}_{\texttt{rowvector}} = \mathbb{R}^*
+$$
+
+$$
+m \in \textsf{Value}_{\texttt{matrix}}
+= \cup_{m = 0}^{\infty} \cup_{n = 0}^{\infty}
+  \mathbb{R}^m \times \mathbb{R}^n
+$$
+
+*Expression calculus*
+
+$$
+\frac{E_1, \sigma \Downarrow x
+      \qquad
+      E_2 \sigma \Downarrow n}
+     {E_1[E_2], \sigma \Downarrow x_n}
+$$
+
+$$
+\frac{E_1, \sigma \Downarrow x_1
+      \quad \cdots \quad
+      E_N, \sigma \Downarrow x_N}
+     {\{ E_1, \ldots, E_N \}, \sigma \Downarrow (x_1, \ldots, x_N)}
+$$     
+
+$$
+\frac{E_1, \sigma \Downarrow x_1
+      \quad \cdots \quad
+      E_N, \sigma \Downarrow x_N}
+     {[ E_1, \ldots, E_N ], \sigma
+      \Downarrow
+      \begin{bmatrix}
+        x_1 \\
+	\vdots \\
+	x_N
+      \end{bmatrix}}
+$$
+
+# Mini-Stan 3: local variables and assignment
+
+## Abstract syntax
+
+$$
+S \in \textsf{Statement}
+\
+\begin{array}[t]{rl}
+::=    & \epsilon  \\
+\mid   & \texttt{target +=} \ E  \\
+\mid   & S_1; S_2  \\
+\mid   & \{ D; S \}  \\
+\mid   & V[E_1] \ldots [E_N] \ \texttt{=} \ E_0
+\end{array}
+$$
+
+## Operational semantics
+
+*Type calculus*
+
+$$
+\frac
+  {V{:}T, \Gamma \vdash S : \texttt{null}}
+  {\Gamma \vdash \{ V{:}T; S \} : \texttt{null}}
+$$
+
+$$
+\frac
+  {\Gamma \vdash V[E_1]\cdots[E_N] : T
+   \quad
+   \Gamma \vdash E_0 : T}
+  {\Gamma \vdash V[E_1]\cdots[E_N] = E_0 : \texttt{null}}
+$$  
+
+
+*Statement Calculus*
+
+$$
+\frac
+  {E_1, \sigma \Downarrow i_1
+   \quad \cdots \quad
+   E_N, \sigma \Downarrow i_N
+   \quad
+   E_0, \sigma \Downarrow y}
+  {V[E_1]\cdots[E_N] = E_0, \sigma
+   \Downarrow
+   \sigma[V = \sigma(V)[(i_1, \ldots, i_N) = y]]}
+$$  
+
+$$
+\frac
+  {S, \sigma[V = T()] \Downarrow \tau}
+  {\{ V{:}T; \, S \}, \sigma
+   \Downarrow \tau[V{\uparrow}]}
+$$
+where $T() \in \textsf{Val}_T$ is a special value used for
+initialization, 
+
+$$
+x[(i_1, \ldots, i_N) = y](j_1, \ldots, j_N)
 =
 \begin{cases}
-y_m & \textrm{if} \ d_m = \texttt{real} \ v;
-\\[4pt]
-\theta_n & \textrm{if} \ u_n = \texttt{real} \ v;
-\\[4pt]
-\textrm{undefined} & \textrm{otherwise}.
+y & \textrm{if} \ (i_1, \ldots, i_N) = (j_1, \ldots, j_N)
+\\
+x[j_1, \ldots, j_N] & \textrm{otherwise},
+\end{cases}
+$$
+and
+$$
+f[x{\uparrow}](y)
+=
+\begin{cases}
+\textrm{undefined} & \textrm{if} \ x = y
+\\
+f(y) & \textrm{otherwise}.
 \end{cases}
 $$
 
-A MiniStan program $p$ has a denotation $[\![ p ]\!]$ defined by
+# Mini-Stan 4: conditionals and loops
+
+## Abstract syntax
+
+
 $$
-[\![ p ]\!](y, \theta) = \sum_{j = 1}^J {}_{\Gamma_{y,\theta}}[\![ s_j ]\!],
+T \in \textsf{Type}
+\ \begin{array}[t]{rl}
+::=  & \texttt{bool}
+\\
+\mid & \texttt{int}
+\\
+\mid & \texttt{real}
+\\
+\mid & \texttt{vector}
+\\
+\mid & \texttt{rowvector}
+\\
+\mid & \texttt{matrix}
+\\
+\mid & T\texttt{[}\,\texttt{]}
+\end{array}
 $$
-where the $j$-th statement in the program block is
+
 $$
-s_j = e_{j, 0} \sim f(e_{j, 1}, \ldots, e_{j, K_j})
-$$
-and its contribution to the log density is given by
-$$
-\Gamma_{y,\theta}[\![ s_j ]\!]
-=
-\Gamma_{y,\theta}[\![ \, f_j(e_{j, 0}, e_{j, 1}, \ldots, e_{j, K_j}) ]\!].
+\textrm{true}, \textrm{false} \in \textsf{NumericLiteral}_{\texttt{bool}}
 $$
 
-In Bayesian applications, given a fixed data set $y$, the posterior
-log density function $[\![ p ]\!](y)$ can be used with a sampler to
-draw a posterior sample
 $$
-\theta^{(1)}, \ldots, \theta^{(S)} \sim \pi(\theta \mid y),
+S \in \textsf{Statement}
+\
+\begin{array}[t]{rl}
+::=    & \epsilon  \\
+\mid   & \texttt{target +=} \ E  \\
+\mid   & S_1; S_2  \\
+\mid   & \{ D; S \}  \\
+\mid   & V[E_1] \ldots [E_N] \ \texttt{=} \ E_0 \\
+\mid   & \texttt{if} \ (E) \ S \\
+\mid   & \texttt{while} \ (E) \ S \\
+\end{array}
 $$
-or with an optimizer to find a posterior mode,
+
+## Type inference
+
+*Type ordering by assignability*
+
 $$
-\theta^* = \textrm{arg max}_{\theta} \ \pi(\theta \mid y).
+\frac{}{\texttt{bool} \sqsubset \texttt{int}}
 $$
-With automatic differentiation variables for $\theta$, gradient-based
-algorithms like Hamiltonian Monte Carlo sampling and limited-memory
-quasi-Newton optimization can be used, because it is relatively
-inexpensive to accurately compute $\nabla_{\theta} \log p(\theta \mid
-y)$.
 
 
-# Stan
+## Operational semantics
 
-## Types
+*Type calculus*
 
-Every variable in Stan is declared with a type that is known
-statically.  From the types of variables, the type of an expression
-may be inferred.
+$$
+\frac
+  {\Gamma \vdash E : \texttt{bool} \qquad \Gamma \vdash S : \texttt{null}}
+  {\Gamma \vdash \texttt{if} \ (E) \ S : \texttt{null}}
+$$
 
-In addition to function types, there are three classes of types in
-Stan:
+$$
+\frac
+  {\Gamma \vdash E : \texttt{bool} \qquad \Gamma \vdash S : \texttt{null}}
+  {\Gamma \vdash \texttt{while} \ (E) \ S : \texttt{null}}
+$$
 
-* basic types, used for function argument declarations,
-* sized types, used for local variable declarations, and
-* constrained types, used for block variable declarations.
+*Statement calculus*
 
-The set $\textsf{BasicType}$ is the least such that
+$$
+\frac
+  {E, \sigma \Downarrow \textrm{false}}
+  {\texttt{if} \ (E) \ S, \sigma \Downarrow \sigma}
+$$
 
-* $\texttt{real}, \texttt{int} \in \textsf{BasicType}$,
-* $\texttt{vector}, \texttt{row_vector}, \texttt{matrix} \in
-  \textsf{BasicType}$, and
-* $T[] \in \textsf{BasicType}$ if $T \in \textsf{BasicType}$.
-
-The number of dimensions of a type is given by the function
-$\textrm{dim}:\textsf{BasicType} \rightarrow \mathbb{N}$ defined
-inductively by
-
-* $\textrm{dim}(\texttt{real})
-   = \textrm{dim}(\texttt{int})
-   = 0$
-* $\textrm{dim}(\texttt{vector})
-   = \textrm{dim}(\texttt{row_vector})
-   = 1$,
-* $\textrm{dim}(\texttt{matrix}) = 2$, and
-* $\textrm{dim}(T[]) = 1 + \textrm{dim}(T)$.
-
-The set $\textsf{SizedType}$ is the least such that
-
-* $\texttt{real}, \texttt{int} \in \textsf{SizedType}$,
-* $\texttt{vector}[n] \in \textsf{SizedType}$ if $n \in \mathbb{N}$,
-* $\texttt{row_vector}[m] \in \textsf{SizedType}$ if $m \in \mathbb{N}$,
-* $\texttt{matrix}[m, n] \in \textsf{SizedType}$ if $m, n \in
-  \mathbb{N}$, and
-* $T[n] \in \textsf{SizedType}$ if $T \in \textsf{SizedType}$ and $n
-  \in \mathbb{N}$.
-
-Each sized type corresponds to the basic type derived by removing the sizes.
-
-The set $\textsf{ConstrainedType}$ is the least such that
-
-* $\texttt{real}, \texttt{int} \in \textsf{ConstrainedType}$,
-* $\texttt{vector}[n], \texttt{unit_vector}[n]$, $\texttt{simplex}[n],
-  \texttt{ordered}[n]$, $\texttt{pos_ordered}[n] \in \textsf{ConstrainedType}$
-  if $n \in \mathbb{N}$,
-* $\texttt{row_vector}[m] \in \textsf{ConstrainedType}$ if $m \in \mathbb{N}$,
-* $\texttt{matrix}[m, n] \in \textsf{ConstrainedType}$ if $m, n \in
-  \mathbb{N}$, and
-* $\texttt{cov_matrix}[m], \texttt{corr_matrix}[n]$,
-  $\texttt{cholesky_factor}[n]$, $\texttt{cholesky_factor_corr}[n] \in
-  \textsf{ConstrainedType}$ if $m, n \in \mathbb{N}$, and
-* $T[] \in \textsf{ConstrainedType}$ if $T \in \textsf{ConstrainedType}$.
-
-Each constrained type corresponds to a sized type that is derived by
-dropping the constraint.  Specifically,
-
-* $\texttt{vector}[n]$ is the sized type for the constrained types
-  $\texttt{unit_vector}[n]$,  $\texttt{simplex}[n]$,
-  $\texttt{ordered}[n]$, and $\texttt{pos_ordered}[n]$; and
-* $\texttt{matrix}[n, n]$ is the sized type for the constrained types
-  $\texttt{cov_matrix}[m]$, $\texttt{corr_matrix}[n]$,
-  $\texttt{cholesky_factor}[n]$, and $\texttt{cholesky_factor_corr}[n]$.
-
-Stan uses simply typed functions.  The set $\textsf{FunctionType}$ is
-the least such that
-
-* $T_0(T_1, \ldots, T_N) \in \textsf{FunctionType}$ if
-  $T_0, T_1, \ldots, T_N \in \textsf{FunctionType} \cup \textsf{BasicType}$.
-
-## Variables, expressions, and type inference
-
-Expressions are syntactic constructs that denote values.  Stan assumes
-there is some computational approximation of a real-valued field (in
-the algebraic sense) over which real-valued expressions take their
-value.  Integers are assumed to be a subset of the real values.  In
-practice, real values are representated using fixed-size floating
-point numbers and fixed size integers for constants and data and
-automatic differentiation variables for parameters.
-
-The set $\textsf{Variable}$ consists of a countably infinite set of
-unique identifiers.
-
-The set $\textsf{Expression}$ is the least such that
-
-* $y \in \textsf{Expression}$ if $y \in \mathbb{R} \cup \{ -\infty,
-  +\infty, \textrm{NaN} \}$,
-* $n \in \textsf{Expression}$ if $n \in \mathbb{Z}$,
-* $v \in \mathsf{Expression}$ if $v \in \textsf{Variable}$, and
-* $f(e_1, \ldots, e_n) \in \textsf{Expression}$ if
-   $f, e_1, \ldots, e_n \in \textsf{Expression}$.
-
-The *typing relation* $:$ is defined relative to a variable typing
-function $\textrm{type} : \textsf{Variable} \rightarrow \textsf{Type}$ as the
-smallest relation such that
-
-* $y : \texttt{real}$ if $y \in \mathbb{R} \cup \{ -\infty,
-  +\infty, \textrm{NaN} \}$,
-* $n : \texttt{int}$ if $n \in \mathbb{Z}$,
-* $v : T$ if $v \in \textsf{Variable}$ and $\textrm{type}(v) = T$
-* $f(e_1, \ldots, e_n) : T_0$ if
-   $f : T_0(T_1, \ldots, T_N)$ and $e_1:T_1, \ldots, e_N:T_n$.
-
-## Values of types
-
-Expressions take on values in a range that is determined by their
-type.  The sets of possible values $\textsf{Value}_T$ for each sized
-type $T \in \textsf{SizedType}$ is defined jointly by
-
-* $\textsf{Value}_{\texttt{int}} = \mathbb{Z}$,
-* $\textsf{Value}_{\texttt{real}} = \mathbb{R}$,
-* $\textsf{Value}_{\texttt{vector}[n]} = \mathbb{R}^n$,
-* $\textsf{Value}_{\texttt{row_vector}[m]} = \mathbb{R}^m$,
-* $\textsf{Value}_{\texttt{matrix}[m, n]} = \mathbb{R}^{m \times n}$,
-* $\textsf{Value}_{T[k]} = (\textsf{Value}_T)^k$, and
-* $\textsf{Value}_{T_0(T_1, \ldots, T_N)}
-  = (\textsf{Value}_{T_1} \times \cdots \times \textsf{Value}_{T_N})
-    \rightarrow \textsf{Value}_{T_N})$.
-
-Possible values for unsized types are the union of their sized counterparts,
-
-* $\textsf{Value}_{\texttt{vector}[]}
-  = \bigcup_{n \in \mathbb{N}} \textsf{Value}_{\texttt{vector}[n]}$
-* $\textsf{Value}_{\texttt{matrix}}
-  = \bigcup_{m, n \in \mathbb{N}}
-    \textsf{Value}_{\texttt{matrix}[m, n]}$
-* $\textsf{Value}_{T[]}
-  = \bigcup_{k \in \mathbb{N}} \textsf{Value}_{T[k]}$
+$$
+\frac
+  {E, \sigma \Downarrow \textrm{true}
+   \qquad
+   S, \sigma \Downarrow \tau}
+  {\texttt{if} \ (E) \ S, \sigma \Downarrow \tau}
+$$
 
 
-## Environments and expression denotations
+$$
+\frac
+  {E, \sigma \Downarrow \textrm{false}}
+  {\texttt{while} \ (E) \ S, \sigma \Downarrow \sigma}
+$$
 
-Given an expression $e$ of type $T$, its denotation will be an element
-of $\textsf{Value}_T$.  An *environment* is a function
-$\Gamma: \textrm{Variable} \rightarrow \textrm{Value}$.  Relative to
-an environment $\Gamma$, an expression $e$ of type $T$ has a denotation
-${}_\Gamma[\![ e ]\!] \in \textrm{Value}_T$ defined by
-
-* ${}_\Gamma[\![ y ]\!]
-  = y$ if $y \in \mathbb{R} \cup \{-\infty, \infty, \textrm{NaN} \}$,
-* ${}_\Gamma[\![ n ]\!]
-  = n$ if $n \in \mathbb{Z}$,
-* ${}_\Gamma[\![ v ]\!]
-  = \Gamma(v)$ if $v \in \textsf{Variable}$, and
-* ${}_\Gamma[\![ f(e_1, \ldots, e_N) ]\!]
-  = {}_\Gamma[\![f]\!]({}_\Gamma[\![e_1]\!], \ldots, {}_\Gamma[\![e_N]\!])$
-    if $f : T_0(T_1, \ldots, T_N)$ and $e_1 : T_1, \ldots, e_N: T_N$.
-
-## Lvalues
-
-Lvalues are the set of expressions that may appear on the left hand
-side of an assignment statement.  The set $\textsf{Lvalue}$ is defined
-to be the least such that
-
-* $v \in \textsf{Lvalue}$ if $v \in \textsf{Variable}$ and
-* $v[i_1, \ldots, i_N] \in \textsf{Lvalue}$ if $v \in
-  \textsf{Variable}$, $\textrm{dim}(\textrm{type}(v)) \geq N$, and
-  $i_1, \ldots, i_N \in \mathbb{N}$.
-
-## Variable declarations
-
-The set \textsf{Declaration} of variable declarations is the smallest
-such that
-
-* $T v \in \textsf{Declaration}$
-  if $T \in \textsf{Type}$ and $v \in \textsf{Variable}$
-
-## Statements
-
-The set $\textsf{Statement}$ is the smallest such that
-
-* $l = e \in \textsf{Statement}$ <br />
-  if $l \in \textsf{Lvalue}_T$ and $e \in \textsf{Expression}_T$,
-* $y \sim \ p(\theta_1, \ldots, \theta_N) \in \textsf{Statement}$  <br />
-  if $p : \texttt{real}(T_0, T_1, \ldots, T_N),
-      y : T_0, \theta_1 : T_1, \ldots, \theta_N : T_N$,
-* $\{ d_1; \cdots d_M; s_1; \cdots s_N; \} \in \textsf{Statement}$  <br />
-  if $d_1, \ldots, d_M \in \textsf{Declaration}$
-  and $s_1, \ldots, s_N \in \textsf{Statement}$,
+$$
+\frac
+  {E, \sigma \Downarrow \textrm{true}
+   \qquad
+   S, \sigma \Downarrow \rho
+   \qquad
+   \texttt{while} \ (E) \ S, \rho \Downarrow \tau}
+  {\texttt{while} \ (E) \ S, \sigma \Downarrow \tau}
+$$
 
 
+# References {-}
 
-<br />
+There are several nice introductions to probabilistic programming
+drawn from courses in the UK and Ireland. This paper leans heavily on
 
-<br />
+* Matthew Hennessy.  2014.  [Semantics of programming
+  languages](https://www.scss.tcd.ie/Matthew.Hennessy/splexternal2015/LectureNotes/Notes14%20copy.pdf).
+ CS3017 course notes. Trinity College Dublin.
+
+* Andrew M. Pitts.  2015.  [Lecture notes on semantics of programming
+  languages](https://www.scss.tcd.ie/Matthew.Hennessy/splexternal2015/resources/Pitts.pdf).
+  Computer science tripos, part IB.  University of Cambridge.
+
+* Peter Sewell. 2015.  [Semantics of programming
+  languages](https://www.cl.cam.ac.uk/teaching/1516/Semantics/notes.pdf).
+  Computer science tripos, part IB. University of Cambridge.
+
+
