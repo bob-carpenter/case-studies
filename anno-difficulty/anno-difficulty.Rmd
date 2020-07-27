@@ -1,7 +1,7 @@
 ---
-title: "Rejecting Dawid and Skene's Model of Data Annotation and Fixing it with Item Difficulty"
+title: "Discrete rating models with accuracy, bias, difficulty, discrimination, and guessing"
 author: "Bob Carpenter"
-date: "11 August 2019"
+date: "May 2020"
 output:
   tufte::tufte_html:
     toc: true
@@ -80,6 +80,92 @@ print_file <- function(file) {
 
 
 # Introduction
+
+Data rating problems go by many names and have many applications in
+many literatures.  They are known as item-response models in
+educational testing when the items are test questions and the raters
+are students taking the test.  In dignostic testing, the items are
+subjects and the raters are diagnostic tests such as blood tests,
+physical exams, or X-rays.  In ensemble machine learning, the raters
+are machine learning classifiers and the items are anything being
+classified, such as images of street scenes being classified for the
+existence of pedestrians.  In machine learning test corpus creation,
+the raters are the corpus annotators and the items are what is being
+classified, such as words in natural language being classified for
+grammatical part of speech.  In statistics, all of these models are
+just noisy measurement models.
+
+This paper surveys approaches used primarily for data annotation in
+machine-learning or statistical estimation problems.  The simplest
+model is based on voting.  The raters are all assumed to have the same
+accuracy (that is, they are completely pooled).  This accuracy must be
+estimated along with the gold standard and prevalence of positive
+items.  Often voting models are simplified by assuming uniform
+prevalence of items, as is often found in artificially constructed
+data sets.  When such models are quantified, they produce a
+voting-based approach to producing a gold standard.  This simple model
+provides estimates of prevalence, aggregate rater accuracy, and the
+status of each item.
+
+A more complex model assumes that each rater has a different
+accuracy (no pooling).  The resulting gold-standard inferernces
+correspond to weighted voting, where the raters' votes are weighted by
+their estimated probability of making a mistake.  This model provides
+estimates of prevalence, individual rater accuracy, and the status of
+each item.
+
+Each rater's accuracy can be factored into a sensitivity (accuracy on
+positive items) and specificity (accuracy on negative items).  This
+accounts for rater bias (favoring positive or negative answers) as
+well as asymmetric difficulty in problems such as information
+retrieval where there may be few, hard-to-find positive items and a
+large body of easy-to-classify negative items. The sensitivity and
+specificity model allows the ratings of biased raters to be more
+deconvolved in estimating the gold standard.  This is especially
+important in multivariate ordinal tasks, such as ratings on a 1--5
+scale.  Theoretically, at least, this allows adversarial raters to be
+useful as long as they have positive mutual information.  It also
+allows the classification of pure spammers, who show up in
+crowdsourcing applications.  A spammer's response is independent of
+the item being rated, and thus their sensitivity is equal to one minus
+their specificity.  This model provides estimates of prevalence,
+individual rater sensitivity and specificity, and the status of each
+item.  
+
+Each item may have a difficulty associated with it, making raters more
+or less accurate when rating it.  This accounts for the natural
+occurrence in data sets of easy and hard to rate items.  Item
+difficulty is necessary to get a good fit of the model to real data
+sets, all of which are overdispersed compared to what would be
+expected from the model without item difficulty.  This model was first
+introduced by Qu, Tan, and Kutner (1996).
+
+Adding just item-level difficulty without splitting accuracy into
+sensitivity and specificity corresponds to a standard item-response
+theory one-parameter logistic model (IRT-1PL).  Such models were
+introduced by Lord (1950) in an educational testing setting, albeit
+with known item statuses.
+
+The voting model is standard operating procedure in machine learning
+corpus creation, often with censoring (removing items that do not have
+a majority vote) and/or randomization (assigning a random value when a
+vote is tied).  Crowdsourced data has sometimes it is extended to
+weighted voting. Prevalence, confusingly known as "bias" in machine
+learning classification problems, can be ignored if the items are
+balanced, with equal numbeers of each category.  Often, prevalence is
+ignored even when the items are not balanced.
+
+Historically, IRT-1PL models were introduced by Lord (1950), albeit
+with known item status as the items were exam questions.  Dawid and
+Skene (1979) introduced the model that splits accuracy into
+sensitivity and specificity and applied it to a corpus of medical
+records with doctors rating whether the chart indicated the patient
+smoked or not.  Qu, Tan, and Kutner (1996) introducd the
+item-difficulty model with sensitivity and specificity.  When items
+are unknown, the expectation maximimzation algorithm has been used to
+fit maximum marginal likelihood estimates.
+
+
 
 Dawid and Skene's model of the data annotation process presupposes
 that the labels supplied by a collection of annotators are
@@ -215,7 +301,7 @@ For each annotator $j \in 1:J$, let $\theta_{j, 1}$ be the true
 positive rate and $\theta_{j, 0}$ the false positive rate on the log
 odds scale.  The true positive rate for annotator $j$ is thus
 $\textrm{logit}^{-1}(\theta_{j, 1})$ and the false positive rate
-$\textrm{logit}^{-1}(\theta_{j, 0})$.
+$1 - \textrm{logit}^{-1}(\theta_{j, 0}) = \textrm{logit}^{-1}(-\theta_{j, 0}).$
 
 ## The full data likelihood
 
@@ -537,7 +623,7 @@ brute force, relying on the binary numerical ordering of our input
 data.
 
 ```{r}
-caries_data <- read.table('caries-data.R', header = TRUE, sep = ",")
+caries_data <- read.table('data/original/caries-data.R', header = TRUE, sep = ",")
 I <- sum(caries_data$count)
 J <- 5
 pos <- 1
@@ -568,16 +654,6 @@ odds scale,
 logit <- function(u) log(u / (1 - u))
 
 inv_logit <- function(v) 1 / (1 + exp(-v))
-
-init_fun <- function(chain_id) {
-  pi_init = logit(mean(y))
-  tp_rate_init = rep(logit(0.9), J)
-  fp_rate_init = rep(logit(0.1), J)
-  theta_init = matrix(c(tp_rate_init,
-                        fp_rate_init),
-                      nrow = 2, byrow = TRUE)
-  list(pi = pi_init, theta = theta_init)
-}
 ```
 
 The
@@ -585,18 +661,18 @@ The
 We compile the Stan function and save it as follows.
 
 ```{r results = 'hide'}
-model_logit <- stan_model('dawid-skene-logit.stan')
+model_logit <- stan_model('stan/dawid-skene-logit.stan')
 ```
 
-Then we fit the model using the default no-U-turn sampler with 4
-chains of 5000 total iterations, half devoted to warmup.
+Then we fit the model using the default no-U-turn sampler with 2
+chains of 2000 total iterations, half devoted to warmup.
 
 ```{r}
-M <- 2000
+M <- 1000
 fit_logit <- sampling(model_logit, data = list(I = I, J = 5, y = y),
                       seed = 1234,
-                      init = init_fun,
-                      iter = M / 2, chains = 4, refresh = 0,
+                      init = 0,
+                      iter = M * 2, chains = 4, refresh = 0,
                       open_progress = FALSE)
 ```
 We can print the resulting parameter estimates.
@@ -854,7 +930,7 @@ The revised model with item difficulty can be coded in Stan as
 follows.
 
 ```{r echo = FALSE}
-print_file('dawid-skene-logit-diff.stan')
+print_file('stan/dawid-skene-logit-diff.stan')
 ```
 
 This Stan program is almost identical to the previous program for the
@@ -862,21 +938,7 @@ original Dawid and Skene model on the log odds scale.  In this
 program, we declare a vector parameter `beta` for the difficulty
 parameters.  These get independent standard normal priors.^[The normal
 has slightly lighter tails than the logistic and thus a standard
-normal favors constrained probabilities near 0.5] Then, there is an
-unusual line, which appears to be (and is) a second prior for `beta`,
-
-```
-  sum(beta) ~ normal(0, 1);
-```
-
-This has the effect of soft-centering the sequence $\beta$ so that
-$$
-\textrm{sum}(\beta) \approx 0.
-$$
-The alternative coding would be to hard center them so that
-$\textrm{sum}(\beta) = 0$ holds exactly.  The soft centering has
-better computational properties and does not affect the final result,
-so we choose that approach here.
+normal favors constrained probabilities near 0.5].
 
 The only other change is that the mixture in the likelihood now takes
 into account difficulty,
@@ -909,7 +971,7 @@ predictive checks are calculated.
 As before, we start by compiling the model.
 
 ```{r results = 'hide'}
-model_diff <- stan_model('dawid-skene-logit-diff.stan')
+model_diff <- stan_model('stan/dawid-skene-logit-diff.stan')
 ```
 
 We code up a new initialization function that also initializes item difficulties
@@ -926,11 +988,11 @@ init_fun_diff <- function(chain_id) {
 Then we fit the model.
 
 ```{r}
-M_diff <- M
+M_diff <- 100
 fit_diff <- sampling(model_diff, data = list(I = I, J = 5, y = y),
                      seed = 1234,
-                     init = init_fun_diff,
-                     iter = M_diff / 2, chains = 4, refresh = 0,
+                     init = 0,
+                     iter = M_diff * 2, chains = 2, refresh = 10,
                      open_progress = FALSE)
 ```
 
@@ -948,7 +1010,8 @@ print(fit_diff, probs = c(0.05, 0.5, 0.95),
                paste("beta[", c(1, (1:19) * floor(I / 19)), "]")))
 ```
 
-The estimate of log odds of a positive case are very similar to the
+The estimate^[As a Bayesian estimator, the posterior mean minimizes expected square error of the estimate.]
+of log odds of a positive case are very similar to the
 original Dawid and Skene model, but slightly lower (by about half a
 percent when converted back to the probability scale).  The parameter
 estimates for annotator base true positive and false positive rates on
@@ -1008,187 +1071,6 @@ were generated by the model.
 
 
 
-# Hierarchical Model with Item Difficulty
-
-We'll conclude our survey of models with one that automatically
-partially pools our estimates by jointly estimating the regression
-coefficients of interest ($\pi, \theta, \beta$), the prior scale of of
-$\beta_i$, and the prior location and scale of $\theta_{j, 1}$ and
-$\theta_{j, 2}$, which have separate priors as one is a true positive
-rate (larger is more accurate) and one a true negative rate (smaller
-is more accurate).
-
-## Hierarchical priors
-
-Specifically, we'll take hierarchical priors for the item difficulties
-
-$$
-\beta_i \sim \textrm{normal}(0, \sigma^{\beta}),
-$$
-
-annotator true positive rates
-
-$$
-\theta_{i, 1} \sim \textrm{normal}(\mu^{\theta}_1, \sigma^{\theta}_1),
-$$
-
-and annotator false positive rates
-
-$$
-\theta_{i, 0} \sim \textrm{normal}(\mu^{\theta}_0, \sigma^{\theta}_0).
-$$
-
-
-## Hyperpriors
-
-We'll then define weakly informative hyperpriors for the hierarchical
-parameters. For the item difficulties, we will center them around zero
-as before in order to identify the model.  So we only require a prior
-on the scale, which we take to allow limited variation among item
-difficulty on the log odds scale.
-
-$$
-\sigma^{\beta} \sim \textrm{normal}(0, 0.5).
-$$
-
-
-Letting $k \in \{ 0, 1 \}$ be the status (false positive, true
-positive), the hyperprior on mean annotator true positive and false
-positive rates is
-
-$$
-\mu^{\theta}_k \sim \textrm{normal}(0, 2).
-$$
-
-This will shrink both the mean true positive rate $\mu^{\theta}_1$ and
-false negative rate $\mu^{\theta}_0$ toward zero, which is chance
-performance.  The prior on $\sigma^{\theta} > 0$ is designed to
-accomodate a wide range of annotator abilities,^[Following Stan
-conventions, this is a half-normal prior on $\sigma^{\theta}.$]
-
-$$
-\sigma^{\theta} \sim \textrm{normal}(0, 2).
-$$
-
-This will shrink pooling toward zero, but still allow it to be very
-wide on the log odds scale.
-
-## Hierarchical model in Stan
-
-The code for the hierarchical model is similar to the previous models.
-Only the priors change.
-
-```{r echo = FALSE}
-print_file('dawid-skene-logit-diff-hier.stan')
-```
-
-The hierarchical model itself follows the definition, but uses a
-non-centered parameterization where standardized parameters get
-standard normal distributions and are then rescaled.  The other thing
-to note is that `pi` has been constrained to be negative.  This
-removes the adversarial multi-modality;  this is done here because
-this model is much more likely to explore both modes with the ability
-to expand hierarchical variance.
-
-
-## Fitting the hierarchical model
-
-The steps are the same as before, with compilation,
-
-```{r results = 'hide'}
-model_hier <- stan_model('dawid-skene-logit-diff-hier.stan')
-```
-
-an amended custom initialization function,
-
-```{r}
-init_fun_hier <- function(chain_id) {
-  pi_init = logit(mean(y))
-  mu_theta_init = c(logit(0.9), logit(0.1))
-  sigma_theta_init = c(1, 1)
-  theta_std_init = matrix(0, nrow = 2, ncol = J)
-  sigma_beta_init = 0.5
-  beta_std_init = rep(0, I)
-  list(pi = pi_init, mu_theta = mu_theta_init,
-       sigma_theta = sigma_theta_init, theta_std = theta_std_init,
-       sigma_beta = sigma_beta_init, beta_std = beta_std_init)
-}
-```
-
-and then a call to sampling, for which we have lowered the initial
-stepsize and tighted the adaptation target to ensure a lower adapted
-step size,^[This leads to more stability in following the Hamiltonian,
-which is required for models with high curvature.]
-
-```{r}
-M_hier <- M
-fit_hier <- sampling(model_hier, data = list(I = I, J = 5, y = y),
-		     seed = 1234,
-                     init = init_fun_hier,
-		     control = list(adapt_delta = 0.95, stepsize = 0.001),
-                     iter = M_hier / 2, chains = 4, refresh = 0,
-                     open_progress = FALSE)
-```
-
-The quantities of interest are printed as usual.
-
-```{r}
-print(fit_hier, probs = c(0.05, 0.5, 0.95),
-      pars = c("pi", "theta",
-               paste("beta[", c(1, (1:19) * floor(I / 19)), "]"),
-	       "mu_theta", "sigma_theta", "sigma_beta",
-               "total_counts_sim", "total_counts_gt_sim"))
-```
-
-Adding hierarchical priors to the difficulty model does not change
-posterior estimate of prevalence ($\pi$), nor do the estimates of
-annotator true and false positive rates change much ($\theta$).
-The hierarchical priors that were fit provide hierarchical means for
-true positive rate at 0.4 and false positive rate at -3, meaning
-annotators have much better specificity (rejecting false cases) than
-sensitivity (finding true cases).  The hierarchical scale on the
-difficulties $\beta$ was estimated at 1.2;  the variation among the
-true positive and false positive rates are much harder to set as there
-are only five annotators; they are estimated at 1.2 for the true
-positive rate scale 1.6 for the false positive rate.
-
-As with the basic model with difficulty, the hierarchical extension is
-not rejected by our posterior predictive check.  The $p$-value is such
-that we cannot reject the model on the basis of its expected response
-counts.
-
-```{r}
-ss_hier <- extract(fit_hier)
-X_sq_hier <- 0
-for (n in 1:6) {
-  E_n <- mean(ss_hier$total_counts_sim[ , n])
-  A_n <- total_counts[n]
-  X_sq_hier <- X_sq_hier + (E_n - A_n)^2 / E_n
-}
-printf("hierarchical item difficulty model X^2 = %8.2f", X_sq_hier)
-
-p_value_hier = pchisq(X_sq_hier, df = 5, lower.tail = FALSE)
-cat("hierarchical item difficulty model p-value = ", p_value_hier)
-```
-
-# Next Steps
-
-Next, it would be worth continuing to follow the lead of item-response
-theory models.^[For modeling discussion and
-Stan implementation hints, see Daniel Furr et al.'s Stan
-case studies, [Two-Parameter Logistic Item Response Model
-](https://mc-stan.org/users/documentation/case-studies/tutorial_twopl.html)
-and [Hierarchical two-parameter logistic item response model
-](https://mc-stan.org/users/documentation/case-studies/hierarchical_2pl.html).]
-The next step in that direction would be to add a discrimination
-parameter that sharpens or softens the difficulty threshold of an
-item.  Moving on to a three-parameter logistic item-response theory
-model, we could also add baseline guessing probability so that the
-result of increasing item difficulty isn't the wrong answer but a
-random answer.  The biggest open problem is how to extend this idea of
-difficulty and discrimination and limiting performance to situations
-where there are more than two categories.
-
 # Conclusion
 
 Our recommendation is that the Dawid and Skene model with difficulties
@@ -1219,5 +1101,5 @@ supplies wrong answers.
 
 Text Copyright (2019) Bob Carpenter.  The text is released under the CC-BY NC 4.0 license.
 
-Code Copyright (2019) Trustees of Columbia University.  The code is
+Code Copyright (2019) Simons Foundation.  The code is
 released under the BSD 3-clause license.
