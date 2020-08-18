@@ -33,9 +33,17 @@ opt_path <- function(x_init, fn, gr, N = 25) {
                fn = function(x) -fn(x),  # negate for maximization
 	       gr = function(x) -gr(x),
                method = "L-BFGS-B",
-               control = list(maxit = n))
+               control = list(maxit = n,
+	                      abstol = 1e-4,
+	                      reltol = 1e-2))
     y[n + 1, 1:D] <- z$par
     y[n + 1, D + 1] <- fn(z$par)
+    # break if no change in objective
+    printf("n = %4d, last = %f;   this = %f",
+           n, y[n, D + 1], y[n + 1, D + 1])
+    if (y[n, D + 1] == y[n + 1, D + 1]) {
+      return(y[1:n, 1:(D + 1)])
+    }
   }
   y
 }
@@ -75,7 +83,7 @@ params_only <- function(path) {
 lp_draws <- function(model, data, init_param_unc) {
   iter <- 2
   max_treedepth <- 3
-  stepsize <- 0.01
+  stepsize <- 0.005
   posterior <- to_posterior(model, data)
   init_fun <- function(chain_id) constrain_pars(posterior, init_param_unc)
   fit <- sampling(model, data = data, init = init_fun,
@@ -131,7 +139,8 @@ data {
   sigma ~ normal(0, 1);
 }
 "
+D <- 100
 model <- stan_model(model_code = program)
-data = list(D = 8)
-opath <- opt_path_stan(model, data = data, N = 50, init_bound = 5)
+data = list(D = D)
+opath <- opt_path_stan(model, data = data, N = 75, init_bound = 5)
 find_typical(model, data, opath)
