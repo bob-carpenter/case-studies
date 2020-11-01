@@ -3,9 +3,9 @@ title: "Maximum Marginal Likelihood and Posterior Approximations with Monte Carl
 author: "<big><big>Bob Carpenter</big></big>"
 date: "9 August 2018"
 output:
-  tufte::tufte_handout:
-    toc: true
-    toc_depth: 1
+#  tufte::tufte_handout:
+#    toc: true
+#    toc_depth: 1
   tufte::tufte_html:
     toc: true
     toc_depth: 1

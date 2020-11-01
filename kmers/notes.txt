@@ -1,0 +1,138 @@
+COMPLIATION
+================================================================================
+> clang++ -I ~/github/stan-dev/math/lib/eigen_3.3.7  -O3 -std=c++17 main.cpp
+> ./a.out
+
+DATA
+================================================================================
+Data is complete set of homo sapiences reference sequences,
+gathered 22 October 2020 from NCBI using query
+
+    "Homo Sapiens"[Organism] AND Refseq-select[filter]
+
+For more info on RefSeq Select, see
+
+    https://www.ncbi.nlm.nih.gov/refseq/refseq_select/
+
+specifically, this from section NCBI Entrez search:
+
+    The entire list of human RefSeq Select accessions, including the
+    subset in the ‘MANE Select’ dataset, can be extracted using the
+    Entrez query "Homo sapiens"[Organism] AND
+    Refseq_select[filter]. The list can then be downloaded and saved
+    to a file using the “Send to” tab at the top of the Nucleotide
+    results page.
+
+LIKELIHOOD AND PRIOR
+================================================================================
+Likelihood:
+  y ~ categorical(x * softmax(alpha))
+
+Prior:
+  alpha ~ normal(0, sigma)
+
+* G is the number of transcripts
+* K is the size of k-mers
+* y is a 4^K-vector of k-mer counts
+* x is a (4^K x G) matrix of expected k-mer counts for a gene
+    (x[i,j] > 0;  sum(x[ , j]) = 1)
+* alpha is a G-vector of log-odds of gene expression
+* sigma is a the scale of variation among the gene expression levels
+* softmax(u) = exp(u) / sum(exp(u))
+
+GRADIENT
+================================================================================
+Calculated by matrixcalculus.org as follows.
+
+INPUT
+--------------------------------------------------------------------------------
+derivate of: y' * log(x * exp(a) / sum(exp(a))) - a' * a / (2 * s)
+w.r.t.: a
+where
+* a is a vector
+* s is a scalar
+* x is a matrix
+* y is a vector
+
+OUTPUT
+--------------------------------------------------------------------------------
+"""
+Sample code automatically generated on 2020-10-31 21:07:59
+
+by www.matrixcalculus.org
+
+from input
+
+d/da y' * log(x * exp(a) / sum(exp(a))) - a' * a / (2 * s) = 1/sum(exp(a))*(x'*(y./(1/sum(exp(a))*x*exp(a)))).*exp(a)-1/sum(exp(a)).^2*exp(a)'*x'*(y./(1/sum(exp(a))*x*exp(a)))*exp(a)-1/s*a
+
+where
+
+a is a vector
+s is a scalar
+x is a matrix
+y is a vector
+
+The generated code is provided "as is" without warranty of any kind.
+"""
+
+from __future__ import division, print_function, absolute_import
+
+import numpy as np
+
+def fAndG(a, s, x, y):
+    assert isinstance(a, np.ndarray)
+    dim = a.shape
+    assert len(dim) == 1
+    a_rows = dim[0]
+    if isinstance(s, np.ndarray):
+        dim = s.shape
+        assert dim == (1, )
+    assert isinstance(x, np.ndarray)
+    dim = x.shape
+    assert len(dim) == 2
+    x_rows = dim[0]
+    x_cols = dim[1]
+    assert isinstance(y, np.ndarray)
+    dim = y.shape
+    assert len(dim) == 1
+    y_rows = dim[0]
+    assert y_rows == x_rows
+    assert a_rows == x_cols
+
+    t_0 = np.exp(a)
+    t_1 = ((1 / np.sum(t_0)) * (x).dot(t_0))
+    t_2 = np.sum(t_0)
+    t_3 = (x.T).dot((y / t_1))
+    functionValue = ((y).dot(np.log(t_1)) - ((a).dot(a) / (2 * s)))
+    gradient = ((((1 / t_2) * (t_3 * t_0)) - ((1 / (t_2 ** 2)) * ((t_0).dot(t_3) * t_0))) - ((1 / s) * a))
+
+    return functionValue, gradient
+
+def checkGradient(a, s, x, y):
+    # numerical gradient checking
+    # f(x + t * delta) - f(x - t * delta) / (2t)
+    # should be roughly equal to inner product <g, delta>
+    t = 1E-6
+    delta = np.random.randn(3)
+    f1, _ = fAndG(a + t * delta, s, x, y)
+    f2, _ = fAndG(a - t * delta, s, x, y)
+    f, g = fAndG(a, s, x, y)
+    print('approximation error',
+          np.linalg.norm((f1 - f2) / (2*t) - np.tensordot(g, delta, axes=1)))
+
+def generateRandomData():
+    a = np.random.randn(3)
+    s = np.random.randn(1)
+    x = np.random.randn(3, 3)
+    y = np.random.randn(3)
+
+    return a, s, x, y
+
+if __name__ == '__main__':
+    a, s, x, y = generateRandomData()
+    functionValue, gradient = fAndG(a, s, x, y)
+    print('functionValue = ', functionValue)
+    print('gradient = ', gradient)
+
+    print('numerical gradient checking ...')
+    checkGradient(a, s, x, y)

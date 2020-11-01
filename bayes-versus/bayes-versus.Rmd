@@ -2,7 +2,7 @@
 title: "For Probabilistic Prediction, Full Bayes is Better than Point
 Estimators"
 author: "Bob Carpenter"
-date: "April 2019"
+date: "August 2020"
 output:
   tufte::tufte_html:
     toc: true
@@ -36,7 +36,7 @@ library(MASS)
 library(rstan)
   rstan_options(auto_write = FALSE)
   options(mc.cores = 4)
-library(tufte)
+# library(tufte)
 
 
 # UTILITY FUNCTIONS
@@ -627,9 +627,9 @@ err_df <-
   rbind(data.frame(error = err,  loss = err^2 * 0.5 / 0.5^2,
                    type = "sq error"),
         data.frame(error = err, loss = abs(err),
-	           type = "abs error"),
-	data.frame(error = err, loss = -log(1 - err) * (0.5 / -log(0.5)),
-	           type = "log loss"))
+                   type = "abs error"),
+        data.frame(error = err, loss = -log(1 - err) * (0.5 / -log(0.5)),
+                   type = "log loss"))
 err_plot <-
   ggplot(err_df, aes(x = error, y = loss, group = type)) +
   geom_line(aes(color = type)) +
@@ -669,7 +669,7 @@ coefficient, $\beta_1$.
 model <- stan_model("logistic-regression.stan")
 fit <- sampling(model, data = data, iter = 4000,
                 control = list(adapt_delta = 0.99, stepsize = 0.01),
-		refresh = 0, open_progress = FALSE)
+                refresh = 0, open_progress = FALSE)
 ```
 ```{r}
 print(fit, prob = c(0.01, 0.99),
@@ -1034,6 +1034,14 @@ almost all such draws are worse than the posterior mode and the
 posterior mean.
 
 
+## Acknowledgements {-}
+
+Thanks to the Mark Johnson for inspiring to write up an example of
+where full Bayesian inference was better than point estimates.  Thanks
+also to all the commenters in our Bayesian computation reading group.
+Thanks in particular to Yuling Yao for all of the clarifying
+questions;  I tried to answer them all here.
+
 
 # Appendix A:  Some alternative evals
 
@@ -1072,26 +1080,28 @@ losses <- function(y, y_hat) {
   list(mae = mae, rmse = rmse, log_loss_rate = log_loss_rate)
 }
 
-losses_table <- function(y, y_hat, N, K, rho, estimator) {
+losses_table <- function(y, y_hat, N, K, rho, estimator, rep_in) {
   losses = losses(y, y_hat)
   data.frame(estimator = estimator, N = N, K = K, rho = rho,
              log_loss_rate = losses$log_loss_rate,
-	     rmse = losses$rmse,
-             mae = losses$mae)
+             rmse = losses$rmse,
+             mae = losses$mae,
+	     rep = rep_in)
 }
 
 model <- stan_model("logistic-regression.stan")
 
-Ns <- c(8, 32, 128, 512)
-Ks <- c(2, 8, 32, 128)
-rhos <- c(0, 0.9)
+Ns <- c(8, 16, 32, 64, 128, 256, 512) # , 32, 64, 128, 256, 512, 1024)
+Ks <- c(2, 8, 32, 64, 256)
+rhos <- c(0)  # , 0.9)
 
 results <- data.frame()
 
 for (N in Ns) {
   for (K in Ks) {
-    if (K > 2 * N) next
     for (rho in rhos) {
+      for (rep in 1:10) {
+        cat("N = ", N, ";  K = ", K, ";  rho = ", rho, "; rep = ", rep, "\n")
         Sigma <- cov_matrix(K, rho)
 
         alpha <- rnorm(1, 0, 0.5)
@@ -1108,16 +1118,16 @@ for (N in Ns) {
                      N_test = N_test, x_test = x_test, y_test = y_test)
 
         # Bayes
-        fit <- sampling(model, data = data, refresh = 0, init = 0,
-	                open_progress = FALSE)
+        fit <- sampling(model, data = data, refresh = 0, init = 0.5,
+                        chains = 4, iter = 4000, control = list(stepsize = 0.01, adapt_delta = 0.95),
+                        open_progress = FALSE)
 
         y_test_hat_bayes <- rep(0, N_test)
         for (n in 1:N_test) {
           y_test_hat_bayes[n] <- mean(extract(fit)$E_y_test[ , n])
         }
-	results <-
-	  rbind(results,
-	        losses_table(y_test, y_test_hat_bayes, N, K, rho, "Bayes"))
+	bayes_table <- losses_table(y_test, y_test_hat_bayes, N, K, rho, "Bayes", rep)
+
 
         # MAP plug-in
         fit_map <- optimizing(model, data = data, refresh = 0, verbose = FALSE)
@@ -1127,9 +1137,7 @@ for (N in Ns) {
           beta_star[k] <- fit_map$par[[paste('beta[', k, ']', sep = "")]]
 
         y_test_star <- inv_logit(alpha_star + (x_test %*% beta_star))
-	results <-
-	  rbind(results,
-	        losses_table(y_test, y_test_star, N, K, rho, "MAP"))
+        map_table <- losses_table(y_test, y_test_star, N, K, rho, "MAP", rep)
 
         # VB plug-in
         alpha_hat <- mean(extract(fit)$alpha)
@@ -1137,25 +1145,58 @@ for (N in Ns) {
         for (k in 1:K)
           beta_hat[k] <- mean(extract(fit)$beta[ , k])
         y_test_hat_vb <- inv_logit(alpha_hat + (x_test %*% beta_hat))
-	results <-
-	  rbind(results,
-	        losses_table(y_test, y_test_hat_vb, N, K, rho, "VB"))
+	vb_table <- losses_table(y_test, y_test_hat_vb, N, K, rho, "VB", rep)
+
+        # reduce to difference in error from Bayes to standardize
+        map_table$log_loss_rate <- map_table$log_loss_rate - bayes_table$log_loss_rate
+	map_table$rmse <- map_table$rmse - bayes_table$rmse
+	map_table$mae <- map_table$mae - bayes_table$mae
+
+        vb_table$log_loss_rate <- vb_table$log_loss_rate - bayes_table$log_loss_rate
+	vb_table$rmse <- vb_table$rmse - bayes_table$rmse
+	vb_table$mae <- vb_table$mae - bayes_table$mae
+
+        bayes_table$log_loss_rate <- bayes_table$log_loss_rate - bayes_table$log_loss_rate
+	bayes_table$rmse <- bayes_table$rmse - bayes_table$rmse
+	bayes_table$mae <- bayes_table$mae - bayes_table$mae
+
+        results <- rbind(results, map_table)
+        results <- rbind(results, vb_table)
+        results <- rbind(results, bayes_table)
+      }	
     }
   }
 }
 
-# no idea why this doesn't work any more. :-(
-knitr::kable(results,
-  caption = "Log loss rate, root mean square error (rmse), and mean absolute error (mae) for full Bayes and plug-in estimates with posterior mode (MAP) and mean (VB) given $N$ observations, $K$ predictors, and a base $\\rho$ correlation between adjacent predictors.")
-```
+mae_results <- aggregate(mae ~ estimator + N + K + rho, results, mean)
+log_loss_rate_results <- aggregate(log_loss_rate ~ estimator + N + K + rho, results, mean)
+rmse_results <- aggregate(rmse ~ estimator + N + K + rho, results, mean)
 
-```{r}
-knitr::kable(results, caption = "Foo") %>%
-  kable_styling(bootstrap_options = c("striped", "hover"))
-print(results, digits = 2)
-```
+mae_results <- cbind(mae_results,
+                     loss_type = rep("mae", dim(mae_results)[1]))
+log_loss_rate_results <- cbind(log_loss_rate_results,
+                               loss_type = rep("log loss", dim(log_loss_rate_results)[1]))
+rmse_results <- cbind(rmse_results,
+                      loss_type = rep("rmse", dim(mae_results)[1]))
 
-Do I need something afterward here?
+names(mae_results)[5] <- "loss"
+names(log_loss_rate_results)[5] <- "loss"
+names(rmse_results)[5] <- "loss"
+
+plot_df <- rbind(log_loss_rate_results, rmse_results)  # , mae_results
+sub_df <- subset(plot_df, rho == 0)
+sub_df$rho <- NULL
+
+results_plot <-
+  ggplot(sub_df,
+         aes(x = N, y = loss, color = estimator, group = estimator)) +
+  geom_line(aes(group = estimator, color = estimator)) +
+  scale_x_log10(breaks = Ns) + 
+  facet_grid(loss_type ~ K, scales = "free_y") +
+  ylab("loss - Bayes loss") +
+  ggtheme_tufte()
+results_plot
+```
 
 # Appendix B:  R Session Information
 
