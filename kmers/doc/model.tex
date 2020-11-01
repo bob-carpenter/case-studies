@@ -1,0 +1,172 @@
+\documentclass{article}
+
+\usepackage{hyperref}
+\usepackage{amssymb}
+\usepackage{amsmath}
+
+\title{Fast and accurate alignment-free RNA expression estimation with $K$-mers}
+\author{Bob Carpenter}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\abstract{\noindent We'll show that reducing both the transcriptome and the
+  short reads produced by RNA-seq to $K$-mers can be used to provide
+  an accurate estimate of relative transcript abundance that is faster
+  and more accurate than traditional methods based on aligning short
+  reads to the transcriptome.}
+
+\section{Background}
+
+\subsection{Bases}
+
+Let
+$\mathbb{B} = \{ \texttt{A}, \texttt{C}, \texttt{G}, \texttt{T} \}$ be
+a set representing the four DNA bases, adenine (\texttt{A}), cytosine
+(\texttt{C}), guanine (\texttt{G}), and thymine (\texttt{T}).
+
+\subsection{$N$-mers}
+
+An $N$-mer is an $N$-tuple of bases,
+$x = (x_1, \ldots, x_N)$.  The set of $N$-mers is
+$\mathbb{B}^N = \{ (x_1, \ldots, x_N) : x_1, \ldots x_N \in
+\mathbb{B}\}$.  The set of $N$-mers of all lengths is
+$\mathbb{B}^* = \bigcup_{n=0}^{\infty} \mathbb{B}^N.$
+
+\subsection{Transcriptome}
+
+Transcripts are the RNA strands transcribed from the DNA molecule to
+messenger RNA (mRNA).  A transcriptome with $G$ transcript types is an
+indexed set of $N$-mers, $T = T_1, \ldots, T_G \in
+\mathbb{B}^*$.
+
+
+\section{RNA-seq data}
+
+\subsection{RNA-seq data}
+
+RNA-seq data, after processing, consists of a sequence of short reads
+$R = R_1, \ldots, R_N$, where each $R_n \in \mathbb{B}^*$.
+
+\subsection{$K$-mer reduced RNA-seq data}
+
+An $N$-mer $x = x_1, \ldots, x_N$, can be reduced to a sequence of
+$K$-mers, $x_{1:K}, x_{2:K+1}, \ldots, x_{N-K+1:N}$.  This sequence
+may be reduced to a function
+$\textrm{count}_K(x):\mathbb{B}^K \rightarrow \mathbb{N}$, where
+$\textrm{count}_K(x)(y)$ is the number of times the $K$-mer $y$
+appears in the $N$-mer $x$.  Henceforth, we will treat
+$\textrm{count}_K(x)$ as a (sparse) $4^K$-vector by ordering the
+$K$-mers lexicographically.
+
+A set of $N$-mers representing RNA-seq data can then be reduced to a
+$K$-mer count by summing the functions representing its elements,
+$\textrm{count}_K(X) = \sum_{x \in X} \textrm{count}_K(x)$.
+
+\section{Model}
+
+In a transcriptome consisting of $G$ base sequences, the only
+parameter is a vector $\alpha \in \mathbb{R}^G$, representing
+intercepts in a multi-logit regression.  $\theta_g$ represents the
+relative abundance of sequence $g$ in the transcriptome. This
+parameter is most easily understood after transforming it to a
+simplex, $\theta = \textrm{softmax}(\alpha)$, where
+\[
+  \textrm{softmax}(\alpha)
+  = \frac{\exp(\alpha)}
+         {\textrm{sum}(\exp(\alpha))}
+\]
+and $\exp(\alpha)$ is defined elementwise.  By construction,
+$\textrm{softmax}(\alpha)_i > 0$ and
+$\textrm{sum}(\textrm{softmax}(\alpha)) = 1$.
+
+\subsection{Likelihood}
+
+The observation $y$ is a sparse $4^K$-vector of $K$-mer counts.  The
+transcriptome $x$ is represented as a sparse $4^K \times G$-matrix of
+$K$-mer counts for each gene.  The matrix $x$ is standardized so that
+the columns, representing genes, are simplexes giving the relative
+frequency of of $K$-mers in that gene's sequence of bases.
+
+The likelihood is
+\[
+  y \sim \textrm{multinomial}(x \cdot \textrm{softmax}(\theta)).
+\]
+Because the columns of $x$ are taken to be simplexes and
+$\textrm{softmax}(\alpha)$ is a simplex, then
+$x \cdot \textrm{softmax}(\alpha)$ is also a simplex, and thus
+appropriate as a parameter for a multinomial distribution.
+
+
+\subsection{Prior}
+
+The prior is a normal centered at the origin,
+\[
+  \alpha_g \sim \textrm{normal}(0, \lambda),
+\]
+for some scale $\lambda > 0$.
+
+
+\subsection{Posterior}
+
+The posterior is determined by Bayes's rule up to an additive constant
+that does not depend on the parameters $\alpha$ as
+\[
+  \log p(\alpha \mid x, y) = \log p(y \mid x, \alpha) + \log p(\alpha) +
+  \textrm{const.}
+  \]
+
+\subsubsection{Posterior gradient}
+
+Efficient maximum penalized likelihood estimation and full Bayesian inference
+require evaluating gradients of the posterior with respect to the parameters
+$\alpha$.  The gradient is\footnote{The derivative is easy to work out
+  by passing \url{matrixcalculus.org} the query
+  \begin{center}\texttt{y' * log
+(x * exp(a) / sum(exp(a))) - a' * a / (2 * lambda)}\end{center}
+and then simplifying using $\textrm{softmax}$.}
+%
+\[
+  \begin{array}{l}
+  \nabla\!_{\alpha} \, \log p(\alpha \mid x, y) + \log p(\alpha)
+  \\[4pt]
+  \qquad = \
+    t \odot \textrm{softmax}(\alpha)
+    - \textrm{softmax}(\alpha)^{\top}\! \cdot t \cdot \textrm{softmax}(\alpha)
+    - \frac{\displaystyle \alpha}{\displaystyle \lambda},
+\end{array}
+\]
+where
+\[
+  t = x^{\top}\! \cdot (y \oslash (x \cdot \textrm{softmax}(\alpha)))
+\]
+and $\odot$ and $\oslash$ are elementwise multiplication and
+division, respectively.
+
+\section{Estimating expression}
+
+\subsection{Maximum a posterior estimate}
+
+The max a posteriori (MAP) estimate for $\alpha$ is given by
+\[
+  \alpha^* = \textrm{arg\,max}_{\alpha} \,
+  \log \textrm{multinomial}(y \mid x \cdot \textrm{softmax}(\alpha))
+  + \log \textrm{normal}(\alpha \mid 0, \lambda \cdot \textrm{I}).
+\]
+
+\subsection{Maximum penalized likelihood estimate}
+
+With a normal prior, the maximum a posteriori (MAP) estimate will be
+equivalent to the $\textrm{L}_2$-penalized maximum likelihood estimate
+(MLE), which is defined as
+\[
+  \alpha^* = \textrm{arg\,max}_{\alpha} \,
+  \log \textrm{multinomial}(y \mid x \cdot \textrm{softmax}(\alpha))
+  - \frac{1}{2 \cdot \lambda^2} \cdot \alpha^{\top}\!\! \cdot \alpha.
+\]
+
+\subsection{Bayesian posterior mean estimate}
+
+\end{document}
