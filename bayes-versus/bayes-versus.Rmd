@@ -9,7 +9,7 @@ output:
     toc_depth: 1
 ---
 
-```{r echo = FALSE, warning = FALSE, message = FALSE}
+```{r echo=FALSE, warning=FALSE, message=FALSE}
 library(ggplot2)
 library(knitr)
 library(kableExtra)
@@ -33,11 +33,7 @@ knitr::opts_chunk$set(
   out.width = "90%"
 )
 library(MASS)
-library(rstan)
-  rstan_options(auto_write = FALSE)
-  options(mc.cores = 4)
-# library(tufte)
-
+library(tufte)
 
 # UTILITY FUNCTIONS
 
@@ -105,11 +101,29 @@ options(digits = 2)
 options(htmltools.dir.version = FALSE)
 
 set.seed(1234)  # reproduces with other seed, just tired of it dancing
+
+# CMDSTANR LIBRARIES, CONFIGURATION
+
+library(cmdstanr)
+library(posterior)
+set_cmdstan_path("~/.cmdstan/cmdstan-2.25.0")
 ```
 
 ## Abstract {-}
 
-A probabilistic prediction takes the form of a distribution over possible outcomes.  With proper scoring rules such as log loss or square error, it is possible to evaluate such a probabilistic prediction against a true outcome.  This short note provides simulation-based evaluation of full Bayesian inference, where we average over our estimation uncertianty, and two forms of point estimation, one that uses the posterior mode (max a posteriori) and one that uses the posterior mean (as is typical with variational inference).  The example we consider is a simple Bayesian logistic regression with potentially correlated predictors and weakly informative priors.  To make a long story short, full Bayes has lower expected log loss and squared error than either of the point estimators.
+A probabilistic prediction takes the form of a distribution over
+possible outcomes.  With proper scoring rules such as log loss or
+square error, it is possible to evaluate such a probabilistic
+prediction against a true outcome.  This short note provides
+simulation-based evaluation of full Bayesian inference, where we
+average over our estimation uncertianty, and two forms of point
+estimation, one that uses the posterior mode (max a posteriori) and
+one that uses the posterior mean (as is typical with variational
+inference).  The example we consider is a simple Bayesian logistic
+regression with potentially correlated predictors and weakly
+informative priors.  To make a long story short, full Bayes has lower
+expected log loss and squared error than either of the point
+estimators.
 
 
 # Logistic Regression
@@ -122,11 +136,12 @@ covariates or features.] $x_n$ for $n \in 1:N$. That is, $x \in
 \mathbb{R}^{N \times K}$ is the complete data matrix and $x_n$ is its
 $n$-th row. We will assume the columns of $x$ are standardized,^[To
 standardize an unstandardized variable $x = x_1, \ldots, x_N,$ set
-$$\mbox{z}(x) = \frac{x - \mbox{mean}(x)}{\mbox{sd}(x)}.$$ A
-standardized value $z(x)$ of 1 corresponds to an original value $x$
+$$\mbox{z}(x) = \frac{x - \mbox{mean}(x)}{\mbox{sd}(x)}.$$
+A standardized value $z(x)$ of 1 corresponds to an original value $x$
 that is one standard deviation above the mean; a value of -2.5
 corresponds to a value two and a half standard deviations below the
-mean.] so that for every column $k$ corresponding to a predictor, we
+mean.]
+so that for every column $k$ corresponding to a predictor, we
 have
 $$
 \mbox{mean}(x_{1:N, \ k}) = 0
@@ -170,8 +185,8 @@ Given the log odds, the probability that $y_n$ is one is given by
 inverting the log odds function,^[The inverse logit function
 $\mbox{logit}^{-1}:(-\infty, \infty) \rightarrow (0, 1)$ maps a log
 odds value $u \in (-\infty, \infty)$ to its corresponding probability,
-$$\mbox{logit}^{-1}(u) = \frac{1}{1 + \exp(-u)}. The inverse logit
-function is also known as the (logistic) sigmoid function.$$]
+$$\mbox{logit}^{-1}(u) = \frac{1}{1 + \exp(-u)}.$$ The inverse logit
+function is also known as the (logistic) sigmoid function.]
 $$
 \mbox{Pr}[y_n = 1] = \mbox{logit}^{-1}(\alpha + x_n \, \beta).
 $$
@@ -393,7 +408,7 @@ and outcomes and then fit our logistic regression model with full
 Bayes, posterior modes, and posterior means for the purposes of
 evaluating predictive accuracy.
 
-## Stan program
+## Stan program  {#stan_program}
 
 Here's a Stan program implementing the logistic regression model.
 ```{r}
@@ -412,7 +427,7 @@ block to provide full Bayesian inference that also uses information in
 the test predictors (but not the test outcomes).]
 
 
-## Simulated Data
+## Simulated Data  {#sim_data}
 
 We'll assume the predictor vectors are multivariate normal with
 $K \times K$ covariance matrix $\Sigma$ defined by
@@ -620,7 +635,7 @@ The absolute error can range between 0 and 1.  The square error has
 the same range.  Log loss is minimized at zero, but unbounded as error
 approaches one.  We can plot these functions
 
-```{r fig.cap = "Three loss functions plotted as a function of absolute error.  Because the dimensions of the loss functions vary and the scale is irrelevant for comparison, we have multiplied the loss functions so that they have loss one half for an absolute error of one half.  For absolute errors between zero and one half, square error grows most slowly and absolute error increases the fastest.  For errors above one half, square error grows fastest initially, then log loss takes over for very high absolute error (above ninety percent or so)."}
+```{r fig.cap="Three loss functions plotted as a function of absolute error.  Because the dimensions of the loss functions vary and the scale is irrelevant for comparison, we have multiplied the loss functions so that they have loss one half for an absolute error of one half.  For absolute errors between zero and one half, square error grows most slowly and absolute error increases the fastest.  For errors above one half, square error grows fastest initially, then log loss takes over for very high absolute error (above ninety percent or so)."}
 
 err = seq(0.001, 0.999, by = 0.01)
 err_df <-
@@ -645,7 +660,7 @@ loss of zero for an absolute error of zero.
 It's also useful to observe the plot on the log scale to visualize the
 behavior of the loss functions at values near zero.
 
-```{r fig.cap = "Log scale version of the previous plot of loss versus absolute error.  The log scale highlights the differing behavior for small absolute errors."}
+```{r fig.cap="Log scale version of the previous plot of loss versus absolute error.  The log scale highlights the differing behavior for small absolute errors."}
 log_err_plot <-
   ggplot(err_df, aes(x = error, y = loss, group = type)) +
   geom_line(aes(color = type)) +
@@ -662,29 +677,29 @@ log_err_plot
 
 # Evaluation with Stan
 
-Fitting the model we provided earlier to our simulate data in Stan
-provides the following output, where we have only included the first
-coefficient, $\beta_1$.
-```{r results = 'hide'}
-model <- stan_model("logistic-regression.stan")
-fit <- sampling(model, data = data, iter = 4000,
-                control = list(adapt_delta = 0.99, stepsize = 0.01),
-                refresh = 0, open_progress = FALSE)
-```
-```{r}
-print(fit, prob = c(0.01, 0.99),
-           pars = c("alpha", "beta[1]", "log_loss", "sq_loss"))
-```
+Fitting the logistic regression model [above](#stan_program) to the [simulated data](#sim_data)
+in Stan provides a sample from the posterior distribution.
 
+```{r results='hide'}
+model <- cmdstan_model("logistic-regression.stan")
+fit <- model$sample(data = data, 
+    chains=4, parallel_chains=4,
+    iter_warmup = 2000,  iter_sampling = 2000,
+    adapt_delta = 0.99, step_size = 0.01,
+    refresh = 0)
+```
+We examine the range of values drawn from the posterior
+for the fitted regression coefficients `alpha` and `beta[1]`
+and the quantities of interest `log_loss` and `sq_loss`.
+```{r}
+fit$print(variables = c("alpha", "beta[1]", "log_loss", "sq_loss"), ~quantile(.x, probs = c(0.1, 0.99)))
+```
 The 1% and 99% values provide the ends of the central 98% posterior
-interval on log loss and square loss for parameter values
-$\alpha^{(m)}, \beta^{(m)}$, drawn from the posterior. With only $`r
-N`$ training examples with correlated parameters, there is a great
+With only $`r N`$ training examples with correlated parameters, there is a great
 deal of uncertainty in the posteriors for coefficients and hence for
 predictions and for loss versus the test set. The range of log loss
 and square loss values shows the variability in those metrics across
 draws from the posterior.
-
 
 ## Full Bayesian inference
 
@@ -700,15 +715,17 @@ The result of running the simulation yields the following losses.
 
 ```{r}
 y_test_hat_bayes <- rep(0, N_test)
+draws_E_y_test <- as_draws_matrix(fit$draws("E_y_test"))
+
 for (n in 1:N_test)
-  y_test_hat_bayes[n] <- mean(extract(fit)$E_y_test[ , n])
+  y_test_hat_bayes[n] <- mean(draws_E_y_test[ , n])
 
 sq_error_bayes <- sum((y_test - y_test_hat_bayes)^2)
 log_loss_bayes <- -sum(dbinom(y_test, 1, y_test_hat_bayes, log = TRUE))
 
-printf("BAYES: sq error %5.2f  root mean sq error %3.2f",
+printf("BAYES: sq error %5.2f  root mean sq error %3.2f\n",
        sq_error_bayes, sqrt(sq_error_bayes / N_test))
-printf("BAYES: log loss %5.2f  log loss rate %3.2f",
+printf("BAYES: log loss %5.2f  log loss rate %3.2f\n",
        log_loss_bayes, log_loss_bayes / N_test)
 ```
 
@@ -726,24 +743,26 @@ p(\tilde{y}_n \mid \tilde{x_n}, \widehat{\alpha}, \widehat{\beta}).
 $$
 The resulting errors are as follows.
 ```{r}
-alpha_hat <- mean(extract(fit)$alpha)
+alpha_hat <- mean(fit$draws("alpha"))
 beta_hat <- rep(0, K)
+draws_beta <- as_draws_matrix(fit$draws("beta"))
 for (k in 1:K)
-  beta_hat[k] <- mean(extract(fit)$beta[ , k])
+  beta_hat[k] <- mean(draws_beta[k])
+  
 y_test_hat_vi <- inv_logit(alpha_hat + (x_test %*% beta_hat))
-
 sq_error_vi <- sum((y_test - y_test_hat_vi)^2)
+
 log_loss_vi <- -sum(dbinom(y_test, 1, y_test_hat_vi, log = TRUE))
 
-printf("VB: sq error %5.2f  root mean sq error %3.2f",
+printf("VB: sq error %5.2f  root mean sq error %3.2f\n",
        sq_error_vi, sqrt(sq_error_vi / N_test))
-printf("VB: log loss %5.2f  log loss rate %3.2f",
+printf("VB: log loss %5.2f  log loss rate %3.2f\n",
        log_loss_vi, log_loss_vi / N_test)
 ```
 
 ## Max a posterior inference
 
-Here, we use Stan's optimizing function to find the maximum a
+Here, we use Stan's optimization function to find the maximum a
 posteriori (MAP) estimates $\alpha^*, \beta^*$ and proceed to plug
 those in for inference,
 $$
@@ -752,12 +771,9 @@ $$
 The resulting errors are as follows.
 
 ```{r}
-fit_map <- optimizing(model, data = data, verbose = FALSE, refresh = 0)
-alpha_hat_map <- fit_map$par[['alpha']]
-beta_hat_map <- rep(0, K)
-for (k in 1:K)
-  beta_hat_map[k] <- fit_map$par[[paste('beta[', k, ']', sep = "")]]
-
+fit_map <- model$optimize(data = data, refresh = 0)
+alpha_hat_map <- fit_map$mle("alpha")
+beta_hat_map <- fit_map$mle("beta") 
 y_test_hat_map <- inv_logit(alpha_hat_map + (x_test %*% beta_hat_map))
 
 sq_error_map <- sum((y_test - y_test_hat_map)^2)
@@ -922,7 +938,7 @@ would lead to an error of plus or minus 20% or so.
 Here are the results of estimating with these approaches compared to
 the true values.
 
-```{r results = 'hide'}
+```{r results='hide'}
 K <- 50
 rho <- 0.9
 Sigma <- matrix(0, K, K)
@@ -942,32 +958,41 @@ x <- mvrnorm(N, rep(0, K), Sigma)
 y <- rbinom(N, 1, inv_logit(alpha + x %*% beta))
 phi <- alpha + x %*% beta + rnorm(N, 0, 0.25)
 
-weighted_model <- stan_model("weighted-logistic-regression.stan")
-weighted_fit <-
-  sampling(weighted_model, iter = 4000,
-           data = list(N = N, K = K, x = x, phi = as.vector(phi)),
-           control = list(adapt_delta = 0.99, stepsize = 0.01),
-           refresh = 0, open_progress = FALSE)
-weighted_draws <- extract(weighted_fit)
+weighted_model <- cmdstan_model("weighted-logistic-regression.stan")
+weighted_fit <-weighted_model$sample(
+     chains=4, parallel_chains=4,
+     iter_warmup = 2000,  iter_sampling = 2000,
+     data = list(N = N, K = K, x = x, phi = as.vector(phi)),
+     adapt_delta = 0.99, step_size = 0.01,
+     refresh = 0)
 
-unweighted_model <- stan_model("simple-logistic-regression.stan")
-sampled_fit <-
-  sampling(unweighted_model, iter = 4000,
-           data = list(N = N, K = K, x = x, y = y),
-           control = list(adapt_delta = 0.99, stepsize = 0.01),
-           refresh = 0, open_progress = FALSE)
-sampled_draws <- extract(sampled_fit)
+
+unweighted_model <- cmdstan_model("simple-logistic-regression.stan")
+sampled_fit <- unweighted_model$sample(
+     chains=4, parallel_chains=4,
+     iter_warmup = 2000,  iter_sampling = 2000,
+     data = list(N = N, K = K, x = x, y = y),
+     adapt_delta = 0.99, step_size = 0.01,
+     refresh = 0)
+
+weighted_fit$print(variables = c("alpha", "beta[1]"), ~quantile(.x, probs = c(0.1, 0.5, 0.99)))
+weighted_draws_alpha <- as_draws_matrix(weighted_fit$draws("alpha"))
+weighted_draws_beta <- as_draws_matrix(weighted_fit$draws("beta"))
+
+sampled_fit$print(variables = c("alpha", "beta[1]"), ~quantile(.x, probs = c(0.1, 0.5, 0.99)))
+sampled_draws_alpha <- as_draws_matrix(sampled_fit$draws("alpha"))
+sampled_draws_beta <- as_draws_matrix(sampled_fit$draws("beta"))
 ```
 
 ```{r}
-printf("%10s: alpha = %5.2f  beta[1] = %5.2f  beta[2] = %5.2f",
+printf("%10s: alpha = %5.2f  beta[1] = %5.2f  beta[2] = %5.2f\n",
        "true", alpha, beta[1], beta[2])
-printf("%10s: alpha = %5.2f  beta[1] = %5.2f  beta[2] = %5.2f",
-       "weighted", mean(weighted_draws$alpha),
-       mean(weighted_draws$beta[, 1]), mean(weighted_draws$beta[, 2]))
-printf("%10s: alpha = %5.2f  beta[1] = %5.2f  beta[2] = %5.2f",
-       "sampled", mean(sampled_draws$alpha),
-       mean(sampled_draws$beta[, 1]), mean(sampled_draws$beta[, 2]))
+printf("%10s: alpha = %5.2f  beta[1] = %5.2f  beta[2] = %5.2f\n",
+       "weighted", mean(weighted_draws_alpha),
+       mean(weighted_draws_beta[1]), mean(weighted_draws_beta[2]))
+printf("%10s: alpha = %5.2f  beta[1] = %5.2f  beta[2] = %5.2f\n",
+       "sampled", mean(sampled_draws_alpha),
+       mean(sampled_draws_beta[1]), mean(sampled_draws_beta[2]))
 ```
 Even with that much noise added to the log odds in the weighted case,
 the estimates from a training set of size 200 are much better, as can
@@ -1054,7 +1079,7 @@ entropy and hence different lower bound on cross-entropy and hence log
 loss.]
 
 
-```{r}
+```{r eval=FALSE}
 cov_matrix <- function(K, rho) {
   Sigma <- matrix(0, K, K)
   for (i in 1:K) {
@@ -1086,7 +1111,7 @@ losses_table <- function(y, y_hat, N, K, rho, estimator, rep_in) {
              log_loss_rate = losses$log_loss_rate,
              rmse = losses$rmse,
              mae = losses$mae,
-	     rep = rep_in)
+             rep = rep_in)
 }
 
 model <- stan_model("logistic-regression.stan")
@@ -1118,52 +1143,50 @@ for (N in Ns) {
                      N_test = N_test, x_test = x_test, y_test = y_test)
 
         # Bayes
-        fit <- sampling(model, data = data, refresh = 0, init = 0.5,
-                        chains = 4, iter = 4000, control = list(stepsize = 0.01, adapt_delta = 0.95),
-                        open_progress = FALSE)
-
+        fit <- model$sample(data = data, refresh = 0, init = 0.5,
+                        chains = 4, iter_warmup = 2000, iter_sampling=2000,
+                        step_size = 0.01, adapt_delta = 0.95)
         y_test_hat_bayes <- rep(0, N_test)
+        draws_E_y_test <- as_draws_matrix(fit$draws("E_y_test"))
         for (n in 1:N_test) {
-          y_test_hat_bayes[n] <- mean(extract(fit)$E_y_test[ , n])
+          y_test_hat_bayes[n] <- mean(draws_E_y_test[ , n])
         }
-	bayes_table <- losses_table(y_test, y_test_hat_bayes, N, K, rho, "Bayes", rep)
+        bayes_table <- losses_table(y_test, y_test_hat_bayes, N, K, rho, "Bayes", rep)
 
 
         # MAP plug-in
-        fit_map <- optimizing(model, data = data, refresh = 0, verbose = FALSE)
-        alpha_star <- fit_map$par[['alpha']]
-        beta_star <- rep(0, K)
-        for (k in 1:K)
-          beta_star[k] <- fit_map$par[[paste('beta[', k, ']', sep = "")]]
-
+        fit_map <- model$optimize(data = data, refresh = 0)
+        alpha_star <- fit_map$mle("alpha")
+        beta_star <- fit_map$mle("beta") 
         y_test_star <- inv_logit(alpha_star + (x_test %*% beta_star))
         map_table <- losses_table(y_test, y_test_star, N, K, rho, "MAP", rep)
 
         # VB plug-in
-        alpha_hat <- mean(extract(fit)$alpha)
+        alpha_hat <- mean(as_draws_matrix(fit$draws("alpha")))
+        draws_beta <- as_draws_matrix(fit$draws("beta"))
         beta_hat <- rep(0, K)
         for (k in 1:K)
-          beta_hat[k] <- mean(extract(fit)$beta[ , k])
+          beta_hat[k] <- mean(draws_beta[ , n])
         y_test_hat_vb <- inv_logit(alpha_hat + (x_test %*% beta_hat))
-	vb_table <- losses_table(y_test, y_test_hat_vb, N, K, rho, "VB", rep)
+        vb_table <- losses_table(y_test, y_test_hat_vb, N, K, rho, "VB", rep)
 
         # reduce to difference in error from Bayes to standardize
         map_table$log_loss_rate <- map_table$log_loss_rate - bayes_table$log_loss_rate
-	map_table$rmse <- map_table$rmse - bayes_table$rmse
-	map_table$mae <- map_table$mae - bayes_table$mae
+        map_table$rmse <- map_table$rmse - bayes_table$rmse
+        map_table$mae <- map_table$mae - bayes_table$mae
 
         vb_table$log_loss_rate <- vb_table$log_loss_rate - bayes_table$log_loss_rate
-	vb_table$rmse <- vb_table$rmse - bayes_table$rmse
-	vb_table$mae <- vb_table$mae - bayes_table$mae
+        vb_table$rmse <- vb_table$rmse - bayes_table$rmse
+        vb_table$mae <- vb_table$mae - bayes_table$mae
 
         bayes_table$log_loss_rate <- bayes_table$log_loss_rate - bayes_table$log_loss_rate
-	bayes_table$rmse <- bayes_table$rmse - bayes_table$rmse
-	bayes_table$mae <- bayes_table$mae - bayes_table$mae
+        bayes_table$rmse <- bayes_table$rmse - bayes_table$rmse
+        bayes_table$mae <- bayes_table$mae - bayes_table$mae
 
         results <- rbind(results, map_table)
         results <- rbind(results, vb_table)
         results <- rbind(results, bayes_table)
-      }	
+      }
     }
   }
 }

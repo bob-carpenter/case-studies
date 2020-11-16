@@ -1,3 +1,3 @@
 #!/bin/sh
 
-Rscript -e "knitr::render('index.Rmd')"
+Rscript -e "rmarkdown::render('"${1}"')"
