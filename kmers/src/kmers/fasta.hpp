@@ -1,6 +1,9 @@
 #ifndef FASTA_HPP
 #define FASTA_HPP
 
+#include <Eigen/Dense>
+#include <Eigen/Sparse>
+
 #include <cmath>
 #include <cstdint>
 #include <exception>
@@ -9,21 +12,21 @@
 #include <map>
 #include <numeric>
 #include <sstream>
-#include <Eigen/Dense>
-#include <Eigen/Sparse>
 
 /**
- * A structure to hold a map from k-mer indexes to k-mer counts.
+ * A structure to hold a sparse map from k-mer indexes to k-mer
+ * counts with increments.
  */
+template <typename T = size_t>
 struct counter {
-  std::map<size_t, size_t> counts_;
+  std::map<T, size_t> counts_;
 
   /**
    * Increment the count for the specified key by one.
    *
    * @param key key whose count is incremented
    */
-  void increment(size_t key) {
+  void increment(const T& key) {
     if (counts_.find(key) == counts_.end())
       counts_[key] = 0;
     ++counts_[key];
@@ -65,9 +68,10 @@ std::size_t base_id(char c) {
 }
 
 /**
- * Return a numerical identifier for the specified kmer.   Each k-mer
- * is read as a base-4 number given the base_id() for each k-mer.
- * Thus uniqueness is only guaranteed if two kmers are of the same length.
+ * Return a numerical identifier for the specified kmer.  Each k-mer
+ * is read as a base-4 number given the base_id() for each k-mer.  For
+ * a fixed K, this assigns each K-mer gets a unique ID between 0 and
+ * 4^K - 1 based on a lexicographic start, indexing from 0.
  *
  * @param kmer string representing a k-mer
  * @return identifier for the k-mer.
@@ -76,8 +80,8 @@ std::size_t base_id(char c) {
  */
 std::size_t kmer_id(const std::string& kmer) {
   size_t id = 0;
-  for (auto it = kmer.cbegin(); it != kmer.cend(); ++it)
-    id = 4 * id + base_id(*it);
+  for (const char& b : kmer)
+    id = 4 * id + base_id(b);
   return id;
 }
 
@@ -137,7 +141,32 @@ struct seq_map {
   }
 
   /**
+   * Return a counter mapping kmers to their frequencies.
    */
+  counter<std::string> kmer_frequency() const {
+    counter<std::string> c;
+    for (const auto& id_seq : id_to_seq_) {
+      std::string seq = id_seq.second;
+      for (size_t i = 0; i + K_ < seq.size(); ++i) {
+        auto kmer = seq.substr(i, K_);
+        c.increment(kmer);
+      }
+    }
+    return c;
+  }
+
+  /**
+   * Return a counter mapping k-mer frequencies to the number of k-mers
+   * with that frequency.
+   */
+  counter<size_t> kmer_frequency_counts() const {
+    counter<std::string> c = kmer_frequency();
+    counter<size_t> h;
+    for (const auto& kmer_freq : c.counts_)
+      h.increment(kmer_freq.second);
+    return h;
+  }
+
   mat_t kmer_gene_matrix() const {
     size_t num_kmers = kmers();
     mat_t m(kmers(), size());
@@ -145,7 +174,7 @@ struct seq_map {
     size_t id = 0;
     for (const auto& id_seq : id_to_seq_) {
       std::string seq = id_seq.second;
-      counter c;
+      counter<size_t> c;
       for (size_t i = 0; i + K_ < seq.size(); ++i) {
         auto kmer = seq.substr(i, K_);
         auto k_id = kmer_id(kmer);
@@ -217,6 +246,9 @@ struct log_posterior_gradient {
     return lpd;
   }
 };
+
+
+
 
 // (y).dot(np.log(t_1)) - ((a).dot(a) / (2 * s))
 

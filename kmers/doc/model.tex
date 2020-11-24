@@ -1,10 +1,10 @@
-\documentclass{article}
+\documentclass[11pt]{article}
 
 \usepackage{hyperref}
 \usepackage{amssymb}
 \usepackage{amsmath}
 
-\title{Fast and accurate alignment-free RNA expression estimation with $K$-mers}
+\title{Alignment-free relative abundance with $K$-mers}
 \author{Bob Carpenter}
 \date{\today}
 
@@ -12,92 +12,331 @@
 
 \maketitle
 
-\abstract{\noindent We'll show that reducing both the transcriptome and the
-  short reads produced by RNA-seq to $K$-mers can be used to provide
-  an accurate estimate of relative transcript abundance that is faster
-  and more accurate than traditional methods based on aligning short
-  reads to the transcriptome.}
+\abstract{\noindent Given RNA-seq data and a reference transcriptome,
+  we provide a statistical model of relative abundance of transcripts
+  without the need to align the reads to the transcriptome by reducing
+  the reads and reference transcripts to $K$-mers.}
 
-\section{Background}
+\section{Bases and $K$-mers}
 
-\subsection{Bases}
+The four \emph{DNA bases} are adenine (\texttt{A}),
+cytosine (\texttt{C}), guanine (\texttt{G}), and thymine (\texttt{T}).
+The set of DNA bases is
+\[
+  \mathbb{B} = \{ \texttt{A}, \texttt{C}, \texttt{G}, \texttt{T} \}.
+\]
+A \emph{$K$-mer} is an $K$-tuple of bases,
+\[
+  x = (x_1, \ldots, x_K),
+  \ \textrm{where}
+  \ x_1, \ldots, x_k \in \mathbb{B}^K.
+\]
+The set of $K$-mers is
+\[
+  \mathbb{B}^K
+  = \{ (x_1, \ldots, x_K)
+      : x_1, \ldots x_K \in \mathbb{B} \}.
+\]
+The set of $K$-mers of all lengths is
+\[
+  \mathbb{B}^* = \bigcup_{k=0}^{\infty} \mathbb{B}^k.
+\]
 
-Let
-$\mathbb{B} = \{ \texttt{A}, \texttt{C}, \texttt{G}, \texttt{T} \}$ be
-a set representing the four DNA bases, adenine (\texttt{A}), cytosine
-(\texttt{C}), guanine (\texttt{G}), and thymine (\texttt{T}).
+\section{The transcriptome}
 
-\subsection{$N$-mers}
-
-An $N$-mer is an $N$-tuple of bases,
-$x = (x_1, \ldots, x_N)$.  The set of $N$-mers is
-$\mathbb{B}^N = \{ (x_1, \ldots, x_N) : x_1, \ldots x_N \in
-\mathbb{B}\}$.  The set of $N$-mers of all lengths is
-$\mathbb{B}^* = \bigcup_{n=0}^{\infty} \mathbb{B}^N.$
-
-\subsection{Transcriptome}
-
-Transcripts are the RNA strands transcribed from the DNA molecule to
-messenger RNA (mRNA).  A transcriptome with $G$ transcript types is an
-indexed set of $N$-mers, $T = T_1, \ldots, T_G \in
-\mathbb{B}^*$.
+A \emph{transcriptome} is an indexed multiset of $K$-mers, each of
+which may be of a different length,
+\[
+  T = T_{1}, \ldots, T_{G},
+\]
+with $T_{g, 1:K_g} \in \mathbb{B}^*$.  In data structure terms, the
+transcriptome $T$ is a ragged array of bases.
 
 
 \section{RNA-seq data}
 
-\subsection{RNA-seq data}
+Simple (unpaired) \emph{RNA-seq data}, after processing, consists of an indexed set of base
+sequences, each of which is called a \emph{read},
+\[
+  R = R_1, \ldots, R_N, \ \textrm{where} \ R_n \in \mathbb{B}^J.
+\]
+Although not strictly necessary, we assume for simplicity that all of
+the reads in the RNA-seq data are of the same length.
 
-RNA-seq data, after processing, consists of a sequence of short reads
-$R = R_1, \ldots, R_N$, where each $R_n \in \mathbb{B}^*$.
+With \emph{paired-end} RNA-seq data, each read consists of two short RNA
+sequences read from the same transcript with an unknown gap between
+them on the transcriptome, so the data may be represented as
+\[
+  P = P_1, \ldots, P_N, \ \textrm{where} \ P_n \in \mathbb{B}^J \times
+  \mathbb{B}^J.
+\]
+Again, although not strictly necessary, we assume all sequences are
+the same length to simplify notation.
 
-\subsection{$K$-mer reduced RNA-seq data}
 
-An $N$-mer $x = x_1, \ldots, x_N$, can be reduced to a sequence of
-$K$-mers, $x_{1:K}, x_{2:K+1}, \ldots, x_{N-K+1:N}$.  This sequence
-may be reduced to a function
-$\textrm{count}_K(x):\mathbb{B}^K \rightarrow \mathbb{N}$, where
-$\textrm{count}_K(x)(y)$ is the number of times the $K$-mer $y$
-appears in the $N$-mer $x$.  Henceforth, we will treat
-$\textrm{count}_K(x)$ as a (sparse) $4^K$-vector by ordering the
-$K$-mers lexicographically.
+\section{Shredding $K$-mers}
 
-A set of $N$-mers representing RNA-seq data can then be reduced to a
-$K$-mer count by summing the functions representing its elements,
-$\textrm{count}_K(X) = \sum_{x \in X} \textrm{count}_K(x)$.
+Suppose $K \leq N$.  Then the $N$-mer $x_{1:N}$ can be shredded into
+a sequence of $(N - K + 1)$ $K$-mers by
+\[
+  x_{1:N} \ \mapsto \
+  x_{1:K}, \ x_{2:K+1}, \ \ldots, \ x_{N-K+1:N}.
+\]
+For example,
+\[
+  \texttt{AACAC} \ \mapsto \
+  \texttt{AA}, \ \texttt{AC}, \ \texttt{CA}, \ \texttt{AC}.
+\]
+A sequence (or multiset) of $K$-mers may be summarized with a function
+$\textrm{count}_K:\mathbb{B}^* \rightarrow \mathbb{B}^K \rightarrow
+\mathbb{N}$, where
+$\textrm{count}_K(x)(y)$ is the number of times the $K$-mer
+$y$ appears in the $N$-mer $x$.  Continuing the example above,
+\begin{eqnarray*}
+  \textrm{count}(\texttt{AACAC})(\texttt{AA}) & = & 1,
+  \\
+  \textrm{count}(\texttt{AACAC})(\texttt{AC}) & = & 2,
+  \\
+  \textrm{count}(\texttt{AACAC})(\texttt{CA}) & = & 1,
+\end{eqnarray*}
+and all other counts are zero.
 
-\section{Model}
+A complete set of RNA-seq data $X = X_1, X_2, \ldots, X_N$ may then be reduced to
+$K$-mer counts by summing the counts of the individual reads $x_{n, 1:J}$
+\[
+  \textrm{count}_K(X) = \sum_{n=1}^N \textrm{count}_K(X_n).
+\]
+
+Paired-end RNA-seq data can be shredded elementwise.  For
+example, consider extracting 3-mers from a paired read.
+\[
+  \texttt{ATCAG} / \texttt{CGCGC}
+  \ \mapsto \
+  \texttt{ATC}, \texttt{TCA}, \texttt{CAG},
+  \texttt{CGC}, \texttt{GCG}, \texttt{CGC},
+\]
+Counts are defined for individual paired reads and a complete set of
+RNA-seq data as above.
+
+\section{Indexing $K$-mers}
+
+Define a bijection from the set of $K$-mers, $\mathbb{B}^K$, to the
+first $4^K$ counting numbers, $\{ 0, 1, \ldots 4^K-1 \}$,
+by treating each base as a digit in base 4 and reading the
+$K$-mer as a number.  Following alphabetic order, let
+\[
+  \texttt{A} = 0,
+  \quad \texttt{C} = 1,
+  \quad \texttt{G} = 2,
+  \quad \texttt{T} = 3.
+\]
+The resulting indexing sorts the $K$-mers into lexicographic order.
+For example, with $K = 2$, the sixteen 2-mers are as follows.
+
+\begin{center}
+\begin{tabular}{ll|ll|ll|ll}
+  \texttt{AA} & 0 & \texttt{CA} & 4 &   \texttt{GA} & 8 & \texttt{TA} & 12
+  \\
+  \texttt{AC} & 1 & \texttt{CC} & 5 &   \texttt{GC} & 9 & \texttt{TC} & 13
+  \\
+  \texttt{AG} & 2 & \texttt{CG} & 6 &   \texttt{GG} & 10 & \texttt{TG} & 14
+  \\
+  \texttt{AT} & 3 & \texttt{CT} & 7 &   \texttt{GT} & 11 & \texttt{TT} & 15
+\end{tabular}
+\end{center}
+There are roughly one thousand 5-mers, because $4^5 = 1024$.  There are
+roughly one million 10-mers and one billion 15-mers.
+
+$K$-mer counts can be tabulated and stored very efficiently by using
+this numbering to index into an array.  The complete set of 10-mer
+counts from an RNA-seq experiment can be efficiently indexed and
+stored in 4MB of memory using 32-bit counts (8MB with 64-bit counts).
+Even smaller memory footprints may be achieved by packing smaller
+integer representations; this could be beneficial if it enables the
+counts to be stored in cache.  Shredding into 15-mers would take 4GB
+(8GB) and clearly exceed cache capacity.  Beyond 15-mers, direct
+indexing becomes prohibitive on readily available hardware, and either
+a hashing scheme would be required or a lossy Bloom filter in order to
+store approximate counts.  The memory used by hashing will be
+proportional to the number of unique $K$-mers in the RNA-seq data.
+
+Therefore,
+$\textrm{count}_K(x)$ is a (sparse) $4^K$-vector where the
+$K$-mers are indexed in lexicographic order (i.e., read as base 4
+numbers).
+
+
+\section{Statistical model}
 
 In a transcriptome consisting of $G$ base sequences, the only
 parameter is a vector $\alpha \in \mathbb{R}^G$, representing
 intercepts in a multi-logit regression.  $\theta_g$ represents the
-relative abundance of sequence $g$ in the transcriptome. This
-parameter is most easily understood after transforming it to a
-simplex, $\theta = \textrm{softmax}(\alpha)$, where
+relative abundance of sequence $g$ in the transcriptome.
+
+\subsection{Parameterizing simplexes}
+
+A $K$-\emph{simplex} is a $K$-vector $\theta$ of non-negative values
+such that $\textrm{sum}(\theta) = 1.$  An arbitrary $K$-vector $\alpha
+\in \mathbb{R}^K$ can be transformed to a simplex using the softmax
+function,
 \[
   \textrm{softmax}(\alpha)
   = \frac{\exp(\alpha)}
-         {\textrm{sum}(\exp(\alpha))}
+         {\textrm{sum}(\exp(\alpha))},
 \]
-and $\exp(\alpha)$ is defined elementwise.  By construction,
+where $\exp(\alpha)$ is defined elementwise.   By construction,
+$\textrm{softmax}(\alpha)$ is a simplex, because
 $\textrm{softmax}(\alpha)_i > 0$ and
 $\textrm{sum}(\textrm{softmax}(\alpha)) = 1$.
 
-\subsection{Likelihood}
-
-The observation $y$ is a sparse $4^K$-vector of $K$-mer counts.  The
-transcriptome $x$ is represented as a sparse $4^K \times G$-matrix of
-$K$-mer counts for each gene.  The matrix $x$ is standardized so that
-the columns, representing genes, are simplexes giving the relative
-frequency of of $K$-mers in that gene's sequence of bases.
-
-The likelihood is
+As a function from $K$-vectors to $K$-simplexes, softmax is many to
+one, because adding a constant to each component of $\alpha$ leads to
+the same result,
 \[
-  y \sim \textrm{multinomial}(x \cdot \textrm{softmax}(\theta)).
+  \textrm{softmax}(\alpha)
+  = \textrm{softmax}(\alpha + \lambda \cdot \textbf{1}_K),
 \]
-Because the columns of $x$ are taken to be simplexes and
-$\textrm{softmax}(\alpha)$ is a simplex, then
-$x \cdot \textrm{softmax}(\alpha)$ is also a simplex, and thus
-appropriate as a parameter for a multinomial distribution.
+where $\lambda \in \mathbb{R}$ and $\textbf{1}_K$ is $K$-vector
+of ones.
+
+The function softmax0 defines a smooth, one-to-one mapping from
+$\mathbb{R}^{K-1}$ to $K$-simplexes by
+\[
+  \textrm{softmax0}(\beta) = \textrm{softmax}([0 \ \, \beta]).
+\]
+That is, a zero element is appended to the front of the $(K-1)$-vector.
+This changes the interpretation of the elements from being only
+determined relative to each other to having their scale defined
+relative to the fixed first element.
+
+\subsection{Transcriptome matrix}
+
+A sequence $T_g$ in the transcriptome can be transformed into a
+$4^K$-simplex representing the probability of observing a given
+$K$-mer given a read of transcript $g$.  The entire transcriptome can
+then be converted to a $(4^K \times G)$-matrix $X$. where column $g$ is the
+simplex representing the probability of a $K$-mer being observed given
+that the read was from transcript $T_g$.
+
+\subsubsection{Uniform read location}
+
+Even if the reads are distributed uniformly along a transcript, the
+distribution of $K$-mers will not be uniform because of edge effects
+and because $K$-mers may appear more than once if $K$ is small.
+
+For example, consider a transcript \texttt{ATGGCAATG} of nine bases.
+If reads are size six and we select 4-mers within those reads,
+the possibilities are as follows.
+\begin{center}
+  \begin{tabular}{l|l}
+    \textit{Reads} & 4\textit{-mers}
+    \\ \hline \hline
+    \texttt{ATGGCA} & \texttt{ATGG, TGGC, GGCA}
+    \\ \hline
+    \texttt{\hspace{0.5em}TGGCAA} & \texttt{\hspace{3em}TGGC, GGCA, GCAA}
+    \\ \hline
+    \texttt{\hspace{1em}GGCAAT} & \texttt{\hspace{6em}GGCA, GCAA, CAAT}
+    \\ \hline
+    \texttt{\hspace{1.5em}GCAATG} & \texttt{\hspace{9em}GCAA, CAAT, AATG}
+  \end{tabular}
+\end{center}
+The distribution of 4-mers resulting from uniformly distributed reads
+is not expected to be uniform, but rather as follows.
+\begin{center}
+  \begin{tabular}{r|c||r|c}
+    3\textit{-mer} & \textit{Proportion} & 3\textit{-mer} & \textit{Proportion}
+    \\ \hline \hline
+    \texttt{ATGG} & 1/12 & \texttt{GCAA} & 3/12
+    \\ \hline
+    \texttt{TGGC} & 2/12 & \texttt{CAAT} & 2/12
+    \\ \hline
+    \texttt{GGCA} & 3/12 & \texttt{AATG} & 1/12
+  \end{tabular}
+\end{center}
+
+Assuming each position in the transcript is equally likely to produce
+a read of size $J$, then $X_{1:4^K, g}$ is the $4^K$-simplex defined
+by composing count functions,
+\[
+  X_{1:4^K, \, g}
+  = \frac{\textrm{count}_K\left(\textrm{count}_J(T_g)\right)}
+         {\textrm{sum}\left(\textrm{count}_K\left(\textrm{count}_J(T_g)\right)\right)},
+\]
+where the outer function $\textrm{count}_K$ is type lifted additively
+over functions as in the example.  Specifically, for a sequence $s$,
+and integers $K \leq J \leq \textrm{size}(s)$, the $4^K$-vector of
+$K$-mer counts found in uniformly distributed reads of size $J$ is
+\[
+  \textrm{count}_K(\textrm{count}_J(s))
+  = \sum_{j = 0}^{4^J - 1} \textrm{count}_J(s)(j) \cdot \textrm{count}_K(j).
+\]
+In words, the result $\textrm{count}_K(\textrm{count}_J(s))$ is a
+function from $K$-mer identifiers to their relative abundance in
+uniformly distributed $J$-gram reads over the sequence $s$.  The term
+$\textrm{count}_K(j)$ is a sparse vector mapping $K$-mers to their
+count in the $J$-mer represented by the integer $j$.  This is then
+weighted by $\textrm{count}_J(s)(j)$, which is the count of the $J$-mer $j$ in
+the sequence $s$.
+
+\subsubsection{Non-uniform read location}
+
+The probabilty of reads is non-uniform for several reasons.  Two
+causes that have large impacts are hexamer (6-mer) binding and
+position within the transcript.  In the first case, the probability of
+reads being chosen from a transcript varies up to two orders of
+mangitude or more based on the hexamer appearing in the first six
+positions of the read.  Furthermore, the strength of these effects
+depends on the priming protocol used.  In the second case, the
+probability of a read can vary up to an order of magnitude or more
+based on its relative position along the transcript.
+
+Given the relative probabilities of reads originating at 6-mers, the
+uniform transcriptome matrix may be adjusted by reweighting based on
+the probability of the 6-mers.
+
+Given a formula for relative probability along the transcript, the
+transcriptome matrix may be further adjusted for positional effects.
+In the end, the result is still a $(4^K \times G)$ transcriptome
+matrix $X$.
+
+Taken together, suppose we have transcript $T_g$ of size $N$, reads
+of size $J$, and $p(n)$ is the probability of a read of size $J$
+originating from position $n$.
+
+
+
+\subsection{Observed data}
+
+The observation $y$ is a sparse $4^K$-vector of $K$-mer counts
+corresponding to the shredded reads.
+
+\subsection{Transformed transcriptome matrix}
+
+The transcriptome is representing as a $4^K \times G$ matrix $X$ as
+described above.  The parameter $\alpha \in \mathbb{R}^G$ is a
+$G$-vector whose values indicate the relative level of expression of
+each transcript on the log scale; $\theta = \textrm{softmax}(\alpha)$
+is the corresponding $G$-simplex representing the relative abundance
+$\theta_g$ of each transcript $T_g$ in the transcriptome.
+
+The key step is the transform of the transcript abundances,
+represented by $\theta = \textrm{softmax}(\alpha)$, to $K$-mer
+abundances, as represented by
+$\phi = X \cdot \textrm{softmax}(\alpha)$.  Because
+$\textrm{softmax}(\alpha)$ is a $G$-simplex and the columns of $X$ are
+$4^K$-simplexes, the product $X \cdot \textrm{softmax}(\alpha)$ is a
+$4^K$ simplex---it just reweights the gene-level $K$-mer expressions
+represented by the columns by the gene expressions represented by
+$\textrm{softmax}(\alpha)$.
+
+\subsection{Sampling distribution}
+
+The sampling distribution $p(y \mid X, \alpha)$  for the observed
+$K$-mer counts $y$ given the transcriptome matrix $X$ and log odds
+expression simplex $\theta$ is defined to be multinomial,
+\[
+  y \sim \textrm{multinomial}(X \cdot \textrm{softmax}(\alpha)).
+\]
 
 
 \subsection{Prior}
@@ -106,15 +345,25 @@ The prior is a normal centered at the origin,
 \[
   \alpha_g \sim \textrm{normal}(0, \lambda),
 \]
-for some scale $\lambda > 0$.
+for some scale $\lambda > 0$.  The smaller the scale $\lambda$, the
+more parameter estimates for $\alpha_g$ are shrunk toward zero, and
+thus the less relative difference in expression is allowed.
 
+If we intend to get true zero estimates for some genes with a
+continuous prior, we will need to make penalized maximum likelihood
+estimates with an L1-type penalty.  Keeping to sampling notation, this
+is represented by a double-exponential exponential (aka Laplace)
+distribution,
+\[
+  \alpha_g \sim \textrm{double-exponential}(0, \lambda).
+\]
 
 \subsection{Posterior}
 
 The posterior is determined by Bayes's rule up to an additive constant
 that does not depend on the parameters $\alpha$ as
 \[
-  \log p(\alpha \mid x, y) = \log p(y \mid x, \alpha) + \log p(\alpha) +
+  \log p(\alpha \mid X, y) = \log p(y \mid X, \alpha) + \log p(\alpha) +
   \textrm{const.}
   \]
 
@@ -125,12 +374,12 @@ require evaluating gradients of the posterior with respect to the parameters
 $\alpha$.  The gradient is\footnote{The derivative is easy to work out
   by passing \url{matrixcalculus.org} the query
   \begin{center}\texttt{y' * log
-(x * exp(a) / sum(exp(a))) - a' * a / (2 * lambda)}\end{center}
+(X * exp(a) / sum(exp(a))) - a' * a / (2 * lambda)}\end{center}
 and then simplifying using $\textrm{softmax}$.}
 %
 \[
   \begin{array}{l}
-  \nabla\!_{\alpha} \, \log p(\alpha \mid x, y) + \log p(\alpha)
+  \nabla\!_{\alpha} \, \log p(\alpha \mid X, y) + \log p(\alpha)
   \\[4pt]
   \qquad = \
     t \odot \textrm{softmax}(\alpha)
@@ -140,33 +389,82 @@ and then simplifying using $\textrm{softmax}$.}
 \]
 where
 \[
-  t = x^{\top}\! \cdot (y \oslash (x \cdot \textrm{softmax}(\alpha)))
+  t = X^{\top}\! \cdot (y \oslash (X \cdot \textrm{softmax}(\alpha)))
 \]
-and $\odot$ and $\oslash$ are elementwise multiplication and
-division, respectively.
+and $\odot$ represents elementwise multiplication and $\oslash$
+elementwise division.
 
 \section{Estimating expression}
 
-\subsection{Maximum a posterior estimate}
+\subsection{Bayesian posterior mean estimate}
 
-The max a posteriori (MAP) estimate for $\alpha$ is given by
+The Bayesian \emph{posterior mean estimate} is the parameter's
+expected value conditioned on the observed data,
+\begin{eqnarray*}
+  \widehat{\alpha}
+  & = & \mathbb{E}\!\left[\alpha \mid X, y \, \right]
+  \\[6pt]
+  & = & \int_{\mathbb{R}^G} \alpha \cdot p(\alpha \mid X, y) \, \textrm{d}\alpha.
+\end{eqnarray*}
+The posterior mean estimate minimizes expected square estimation error
+for $\alpha$ if the model is well specified.
+
+Given a sampler that can produce Markov chain Monte Carlo (MCMC) draws
+distributed according to the posterior
+\[
+  \alpha^{(m)} \sim p(\alpha \mid X, y),
+\]
+the posterior mean estimate may be calculated as
+\[
+  \widehat{\alpha} \approx \frac{1}{M} \sum_{m = 1}^M \alpha^{(m)}.
+\]
+As $M \rightarrow \infty$, the approximation converges to the true
+value.  Assuming the Markov chain is geometrically ergodic, the MCMC
+central limit theorem applies, providing a convergence rate of
+$\mathcal{O}\left(1 / \sqrt{M}\right)$.  In practice, a few hundred
+effective draws brings the expected error on $\widehat{\alpha}$ due to
+MCMC down to less than a tenth of the posterior standard deviation of
+$\alpha$.
+
+\subsection{Maximum a posteriori estimate}
+
+The \emph{max a posteriori} (MAP) estimate for $\alpha$ is given by
+choosing the parameter value $\alpha^*$ that maximizes the posterior
+density,
 \[
   \alpha^* = \textrm{arg\,max}_{\alpha} \,
   \log \textrm{multinomial}(y \mid x \cdot \textrm{softmax}(\alpha))
   + \log \textrm{normal}(\alpha \mid 0, \lambda \cdot \textrm{I}).
 \]
+This is not a Bayesian estimate because it does not average over
+posterior uncertainty.
+
 
 \subsection{Maximum penalized likelihood estimate}
 
-With a normal prior, the maximum a posteriori (MAP) estimate will be
-equivalent to the $\textrm{L}_2$-penalized maximum likelihood estimate
-(MLE), which is defined as
+A pure frequentist estimate may be defined by casting the normal prior
+on the parameters as a penalty function based on the $\textrm{L}_2$
+norm,
+\[
+  -\frac{1}{2 \cdot \lambda^2} \cdot \alpha^{\top}\!\! \cdot \alpha.
+\]
+
+Replacing the normal prior in the definition of the MAP estimate with
+the $\textrm{L}_2$ penalty defined above, the
+\emph{penalized maximum likelihood estimate} (MLE) is defined as
 \[
   \alpha^* = \textrm{arg\,max}_{\alpha} \,
   \log \textrm{multinomial}(y \mid x \cdot \textrm{softmax}(\alpha))
   - \frac{1}{2 \cdot \lambda^2} \cdot \alpha^{\top}\!\! \cdot \alpha.
 \]
 
-\subsection{Bayesian posterior mean estimate}
+
+\section*{References}
+
+\begin{itemize}
+\item Biases in Illumina transcriptome sequencing caused by random
+  hexamer priming Kasper D. Hansen,1,* Steven E. Brenner,2 and
+  Sandrine Dudoit1,3.  Nucleic acids research.
+\end{itemize}
 
 \end{document}
