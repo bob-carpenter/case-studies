@@ -145,8 +145,17 @@ struct seq_map {
    */
   counter<std::string> kmer_frequency() const {
     counter<std::string> c;
+    int N = 0;
     for (const auto& id_seq : id_to_seq_) {
+      ++N;
+      if ((N % 1000) == 0)
+	std::cout << N << " / " << id_to_seq_.size() << " isoforms indexed"
+		  << std::endl;
       std::string seq = id_seq.second;
+      for (size_t i = 0; i < seq.size(); ++i)
+	if (seq[i] != 'A' && seq[i] != 'C' && seq[i] != 'G' && seq[i] != 'T')
+	  std::cout << "*********** WHOA, found seq[" << i << "] = " << seq[i]
+		    << std::endl;
       for (size_t i = 0; i + K_ < seq.size(); ++i) {
         auto kmer = seq.substr(i, K_);
         c.increment(kmer);
@@ -162,8 +171,9 @@ struct seq_map {
   counter<size_t> kmer_frequency_counts() const {
     counter<std::string> c = kmer_frequency();
     counter<size_t> h;
-    for (const auto& kmer_freq : c.counts_)
+    for (const auto& kmer_freq : c.counts_) {
       h.increment(kmer_freq.second);
+    }
     return h;
   }
 
@@ -190,6 +200,10 @@ struct seq_map {
     return m;
   }
 
+  bool start_seq(std::string& line) {
+    return line.size() > 0 && line[0] == '>';
+  }
+  
   /**
    * Read FASTA formatted data from file with specified name.
    * @param K length of K-mers
@@ -201,22 +215,28 @@ struct seq_map {
     std::string line;
     int64_t count = 0;
     int64_t total_bases = 0;
-    while (std::getline(in, line)) {
-      if (line.length() == 0 || line[0] != '>') continue;
-      if (line[0] == '>') {
-        std::string id = line.substr(2);
-        std::stringstream val;
-        while (std::getline(in, line) && line.length() > 0)
-          val << line;
-        std::string bp_seq = val.str();
-        id_to_seq_[id] = bp_seq;
-        total_bases += bp_seq.size();
+    while (true) {
+      // advance to first readable line
+      if (!std::getline(in,line).good()) break;
+      if (!start_seq(line)) continue;
+      std::string id = line.substr(1);
+      std::stringstream val;
+      while (std::getline(in, line).good()) {
+	if (start_seq(line)) {
+	  break;
+	}
+	val << line;
       }
+      std::string bp_seq = val.str();
+      id_to_seq_[id] = bp_seq;
+      total_bases += bp_seq.size();
     }
     in.close();
+    }
   }
 };
 
+  
 Eigen::VectorXd softmax(const Eigen::VectorXd& alpha) {
   auto alpha_exp = alpha.array().exp();
   return alpha_exp / alpha_exp.sum();

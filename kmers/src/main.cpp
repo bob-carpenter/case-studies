@@ -2,22 +2,44 @@
 #include <string>
 
 int main() {
-  std::string file = "../data/unpacked/refseq-select-2020-10-22.fasta";
-  seq_map m(10u, file);
+  // std::string file = "../data/unpacked/refseq-select-2020-10-22.fasta";
+  std::string file = "../data/unpacked/GRCh38_latest_rna.fna";
+  size_t K = 10;
+  seq_map m(K, file);
+
   std::cout << std::endl;
-  std::cout << m.size() / 1000 << " thousand identifiers"
+  std::cout << "K = " << K
+	    << std::endl;
+  std::cout << m.size() << " identifiers"
             << std::endl;
-  std::cout << m.total_bases() / 1000000 << " million bases"
+  std::cout << m.total_bases() << " bases"
             << std::endl;
+  std::cout << "Calculating k-mer frequency histogram."
+	    << std::endl;
 
-  std::cout << "Calculating k-mer frequency histogram." << std::endl;
   counter<size_t> c = m.kmer_frequency_counts();
-  std::cout << "    Size = " << c.counts_.size() << std::endl;
+  std::cout << std::endl
+	    << "# K-MER FREQUENCY HISTOGRAM (entries = " << c.counts_.size() << ")"
+	    << std::endl;
+  std::cout << "freq,count"
+	    << std::endl;
+  long total_kmer_count = 0;
   for (const auto& freq_count : c.counts_) {
+    total_kmer_count += freq_count.second;
     std::cout << "k-mer frequency = " << freq_count.first
-              << ";  count = " << freq_count.second << std::endl;
+              << ";  count = " << freq_count.second
+	      << std::endl;
   }
-
+  int missing_kmer_count = static_cast<int>(std::pow(4, K) - total_kmer_count);
+  std::cout << "k-mer frequency = " << 0
+	    << ";  count = " << missing_kmer_count
+	    << std::endl;
+  std::cout << "4^K = " << std::pow(4, K) << ";  total count=" << total_kmer_count
+	    << std::endl;
+  std::cout << "=========================================="
+	    << std::endl;
+  std::cout << total_kmer_count << " distinct k-mers in the transcriptome"
+	    << std::endl;
 
   // Eigen::VectorXd a(3);  a << 1, 2, 3;
   // Eigen::VectorXd sm_a = softmax(a);
