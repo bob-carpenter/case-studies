@@ -1,4 +1,6 @@
 #include "kmers/fasta-parser.hpp"
+#include <Eigen/Dense>
+#include <Eigen/Sparse>
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -21,11 +23,8 @@ bool valid_base(char c) {
 }
 
 bool valid_bases(const std::string& seq) {
-  return std::all_of(seq.begin(), seq.end(), valid_base);
-  //   for (char c : seq)
-  // if (!valid_base(c))
-  // return false;
-  // return true;
+  return std::all_of(seq.begin(), seq.end(),
+                     [](char x) { return valid_base(x); });
 }
 
 template <typename F1, typename F2>
@@ -42,6 +41,11 @@ struct coupler {
     f2_.report();
   }
 };
+template <typename F>
+F couple(F& f) {
+  return f;
+}
+
 template <typename F1, typename F2>
 coupler<F1, F2> couple(F1& f1, F2& f2) {
   return coupler<F1, F2>(f1, f2);
@@ -104,7 +108,7 @@ struct counter {
     ++num_targets_;
     num_bases_ += seq.size();
     if ((num_targets_ % 10000) == 0)
-      std::cout << " targets = " << num_targets_ << std::endl;
+      std::cout << "targets = " << num_targets_ << std::endl;
   }
   void report() const {
     number_format nf;
@@ -112,6 +116,39 @@ struct counter {
     std::cout << num_targets_ << " targets" << std::endl;
     std::cout << num_bases_ << " bases" << std::endl;
   }
+};
+
+struct triplet_counter {
+  int K_;
+  int ref_id_;
+  std::vector<Eigen::Triplet<float, int>> kmer_count_;
+  triplet_counter(int K, size_t reserve_size)
+      : K_(K), ref_id_(0), kmer_count_() {
+    kmer_count_.reserve(reserve_size);
+  }
+  void operator()(const std::string& id, const std::string& seq) {
+    for (int start = 0; start < (seq.size() - K_ + 1); ++start) {
+      std::string kmer = seq.substr(start, K_);
+      try {
+	int kmer_id = fasta::kmer_id(kmer);
+        kmer_count_.emplace_back(ref_id_, kmer_id, 1);
+        ++ref_id_;
+      } catch (...) {
+	std::cout << "illegal kmer = |" << kmer << "|"
+		  << "   in ref id = " << id.substr(0, std::min<size_t>(15U, id.size()))
+		  << std::endl;
+      }
+    }
+  }
+  void report() const {
+    std::cout << "collected triplets" << std::endl;
+    std::cout << "attempting to transpose" << std::endl;
+    Eigen::SparseMatrix<float> x(ref_id_, static_cast<int>(std::pow(4, K_)));
+    x.setFromTriplets(kmer_count_.begin(), kmer_count_.end());
+    // std::cout << "number of triplets (x entries) = " << kmer_count_.size()
+    // << std::endl;
+  }
+
 };
 
 
@@ -126,9 +163,12 @@ int main() {
   std::size_t K = 10;
   auto shred_handler = shredder(K);
 
-  auto handler = couple(count_handler, shred_handler);
+  size_t max_id_kmer = 600000000;
+  auto triplet_handler = triplet_counter(K, max_id_kmer);
+
+  auto handler = couple(count_handler, triplet_handler);
   fasta::parse_file(file, handler);
   handler.report();
-  
+
   return 0;
 }
