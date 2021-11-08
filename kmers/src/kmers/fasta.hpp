@@ -1,6 +1,8 @@
 #ifndef FASTA_HPP
 #define FASTA_HPP
 
+#include "shred.hpp"
+
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
@@ -140,6 +142,23 @@ struct seq_map {
     return ids;
   }
 
+
+  std::vector<int> kmer_freq() const {
+    int M = std::pow(4, K_);
+    int mask = M - 1; // (1u << (2 * K + 1)) - 1;
+
+    std::vector<int> counts(M, 0);
+    int n = 0;
+    for (const auto& id_seq : id_to_seq_) {
+      ++n;
+      std::string s = id_seq.second;
+      // std::stringstream in(s);
+      // shred(K_, in, counts, mask);
+      shred2(K_, s, counts, mask);
+    }
+    return counts;
+  }
+
   /**
    * Return a counter mapping kmers to their frequencies.
    */
@@ -203,7 +222,20 @@ struct seq_map {
   bool start_seq(std::string& line) {
     return line.size() > 0 && line[0] == '>';
   }
-  
+
+  bool getnextline(std::ifstream& in, const std::string& last,
+                   std::string& line) {
+    if (!last.empty()) {
+      line = last;
+      return true;
+    }
+    while (std::getline(in, line).good())
+      if (!line.empty()) {
+        return true;
+      }
+    return false;
+  }
+
   /**
    * Read FASTA formatted data from file with specified name.
    * @param K length of K-mers
@@ -215,16 +247,18 @@ struct seq_map {
     std::string line;
     int64_t count = 0;
     int64_t total_bases = 0;
-    while (true) {
-      // advance to first readable line
-      if (!std::getline(in,line).good()) break;
+    std::string lastline = "";
+    while (getnextline(in, lastline, line)) {
+      lastline = "";
       if (!start_seq(line)) continue;
       std::string id = line.substr(1);
       std::stringstream val;
-      while (std::getline(in, line).good()) {
+      while (getnextline(in, lastline, line)) {
+        lastline = "";
 	if (start_seq(line)) {
+          lastline = line;
 	  break;
-	}
+        }
 	val << line;
       }
       std::string bp_seq = val.str();
@@ -232,11 +266,12 @@ struct seq_map {
       total_bases += bp_seq.size();
     }
     in.close();
-    }
   }
 };
 
-  
+
+
+
 Eigen::VectorXd softmax(const Eigen::VectorXd& alpha) {
   auto alpha_exp = alpha.array().exp();
   return alpha_exp / alpha_exp.sum();
@@ -270,6 +305,5 @@ struct log_posterior_gradient {
 
 
 
-// (y).dot(np.log(t_1)) - ((a).dot(a) / (2 * s))
 
 #endif
