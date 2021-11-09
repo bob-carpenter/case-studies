@@ -127,11 +127,13 @@ struct triplet_counter {
     kmer_count_.reserve(reserve_size);
   }
   void operator()(const std::string& id, const std::string& seq) {
-    for (int start = 0; start < (seq.size() - K_ + 1); ++start) {
+    int num_kmers = seq.size() - K_ + 1;
+    float prob_kmer = 1.0f / num_kmers;
+    for (int start = 0; start < num_kmers; ++start) {
       std::string kmer = seq.substr(start, K_);
       try {
 	int kmer_id = fasta::kmer_id(kmer);
-        kmer_count_.emplace_back(ref_id_, kmer_id, 1);
+        kmer_count_.emplace_back(kmer_id, ref_id_, prob_kmer);
         ++ref_id_;
       } catch (...) {
 	std::cout << "illegal kmer = |" << kmer << "|"
@@ -142,11 +144,12 @@ struct triplet_counter {
   }
   void report() const {
     std::cout << "collected triplets" << std::endl;
-    std::cout << "attempting to transpose" << std::endl;
-    Eigen::SparseMatrix<float> x(ref_id_, static_cast<int>(std::pow(4, K_)));
+    std::cout << "attempting to build" << std::endl;
+    int I = ref_id_;
+    int M = static_cast<int>(std::pow(4, K_));
+    Eigen::SparseMatrix<float, Eigen::RowMajor> x(M, I);
     x.setFromTriplets(kmer_count_.begin(), kmer_count_.end());
-    // std::cout << "number of triplets (x entries) = " << kmer_count_.size()
-    // << std::endl;
+    std::cout << "FINISHED" << std::endl;
   }
 
 };
