@@ -97,13 +97,15 @@ std::size_t kmer_id(const std::string& kmer) {
  * @param[in] f callback handler
  */
 template <typename F>
-void parse_stream(std::istream& in, F& f) {
+void parse_stream(std::istream& in, F& f, bool include_predicted = false) {
   std::string line;
   std::string lastline = "";
   while (internal::getnextline(in, lastline, line)) {
     lastline = "";
     if (!internal::start_seq(line)) continue;
     std::string id = line.substr(1);
+    if (!include_predicted && id.find("PREDICTED") != std::string::npos)
+      continue;
     std::stringstream val;
     while (internal::getnextline(in, lastline, line)) {
       lastline = "";
@@ -129,9 +131,10 @@ void parse_stream(std::istream& in, F& f) {
  * @param[in] f callback handler
  */
 template <typename F>
-void parse_file(const std::string& filename, F& f) {
+void parse_file(const std::string& filename, F& f,
+		bool include_predicted = false) {
   std::ifstream in(filename, std::ifstream::in);
-  parse_stream(in, f);
+  parse_stream(in, f, include_predicted);
   in.close();
 }
 
