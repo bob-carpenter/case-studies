@@ -4,12 +4,13 @@
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 #include <cmath>
+#include <vector>
 
 // typedef Eigen::SparseMatrix<float, Eigen::RowMajor> sparse_matrix_t;
 
 Eigen::VectorXf softmax(const Eigen::VectorXf& alpha) {
   using std::exp;
-  auto delta = Eigen::VectorXf::Constant(alpha.maxCoeff(), alpha.size());
+  Eigen::VectorXf delta = Eigen::VectorXf::Constant(alpha.maxCoeff(), alpha.size());
   Eigen::VectorXf phi = (alpha - delta).array().exp();
   return delta + phi / phi.sum();
 }
@@ -37,21 +38,29 @@ struct multinomial_model {
 		    const Eigen::SparseMatrix<float, Eigen::RowMajor>& xt)
     : y_(y), xt_(xt) { }
 
-  float log_density(const Eigen::VectorXf& alpha) {
-    Eigen::VectorXf theta = softmax(alpha);
-    Eigen::VectorXf xt_sm_a =  (xt_ * softmax(alpha)).array().log();
+  float log_density(const Eigen::VectorXf& beta) {
+    Eigen::VectorXf theta = softmax(beta);
+    Eigen::VectorXf xt_sm_a =  (xt_ * theta).array().log();
     float log_likelihood = y_.transpose() * xt_sm_a;
-    float log_prior = -0.125 * alpha.dot(alpha);
+    float log_prior = -0.125 * beta.dot(beta);
     return log_likelihood + log_prior;
   }
 
-  void grad_log_density(const Eigen::VectorXf& alpha, Eigen::VectorXf& grad) {
-    Eigen::VectorXf t1 = softmax(alpha);
-    auto t2 = xt_ * t1;
+  void grad_log_density(const Eigen::VectorXf& beta, Eigen::VectorXf& grad) {
+    Eigen::VectorXf t1 = softmax(beta);
+    Eigen::VectorXf t2 = xt_ * t1;
     Eigen::VectorXf t3 = (y_.cwiseProduct(t2.cwiseInverse()).transpose() * xt_).transpose();
-    auto grad_likelihood = t1.cwiseProduct(t3) - t1.dot(t3) * t1;
-    auto grad_prior = -0.25 * alpha;
+    Eigen::VectorXf grad_likelihood = t1.cwiseProduct(t3) - t1.dot(t3) * t1;
+    Eigen::VectorXf grad_prior = -0.25 * beta;
     grad = grad_likelihood + grad_prior;
+  }
+
+  std::vector<int> sample(uint64_t N, const Eigen::VectorXf& beta) {
+    return kmers::multinomial_rng(N, xt_ * softmax(beta));
+  }
+
+  std::vector<int> sample(uint64_t N, double mu, double sigma) {
+    return std::vector<int>();
   }
 
 };
