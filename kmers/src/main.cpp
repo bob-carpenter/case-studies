@@ -122,9 +122,11 @@ struct counter {
 struct triplet_counter {
   int K_;
   int ref_id_;
+  int row_max_;
+  int col_max_;
   std::vector<Eigen::Triplet<float, int>> kmer_count_;
   triplet_counter(int K, size_t reserve_size)
-      : K_(K), ref_id_(0), kmer_count_() {
+    : K_(K), ref_id_(0), row_max_(0), col_max_(0), kmer_count_() {
     kmer_count_.reserve(reserve_size);
   }
   void operator()(const std::string& id, const std::string& seq) {
@@ -135,6 +137,8 @@ struct triplet_counter {
       try {
 	int kmer_id = fasta::kmer_id(kmer);
         kmer_count_.emplace_back(kmer_id, ref_id_, prob_kmer);
+	row_max_ = std::max(row_max_, kmer_id);
+	col_max_ = std::max(col_max_, ref_id_);
         ++ref_id_;
       } catch (...) {
 	std::cout << "     # illegal kmer = |" << kmer << "|"
@@ -143,17 +147,15 @@ struct triplet_counter {
       }
     }
   }
+  int rows() const { return row_max_ + 1; }
+  int cols() const { return col_max_ + 1; }
   Eigen::SparseMatrix<float, Eigen::RowMajor> to_matrix() const {
-    std::cout << "A" << std::endl;
     int I = ref_id_;
-    std::cout << "B" << std::endl;
     int M = static_cast<int>(std::pow(4, K_));
-    std::cout << "C" << std::endl;
     Eigen::SparseMatrix<float, Eigen::RowMajor> x(M, I);
-    std::cout << "D" << std::endl;
     x.setFromTriplets(kmer_count_.begin(), kmer_count_.end());
     std::cout << "E" << std::endl;
-    std::cout << "x.size() = " << x.size() << std::endl;
+    // std::cout << "x.size() = " << x.size() << std::endl;
     return x;
   }
   void report() const {
@@ -200,8 +202,12 @@ int main() {
 
   std::cout << "converting triplets to matrix"
 	    << std::endl;
-  Eigen::SparseMatrix<float, Eigen::RowMajor> xt
-    = triplet_handler.to_matrix();
+  std::cout << "rows = " << triplet_handler.rows()
+	    << ";  cols = " << triplet_handler.cols()
+	    << std::endl;
+  // Eigen::SparseMatrix<float, Eigen::RowMajor> xt(triplet_handler.rows(), triplet_handler.cols());
+  // xt.setFromTriplets(triplet_handler.kmer_count_.begin(),
+  // triplet_handler.kmer_count_.end());
   std::cout << "     triplets converted" << std::endl;
 
   
