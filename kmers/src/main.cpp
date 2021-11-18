@@ -122,11 +122,9 @@ struct counter {
 struct triplet_counter {
   int K_;
   int ref_id_;
-  int row_max_;
-  int col_max_;
   std::vector<Eigen::Triplet<float, int>> kmer_count_;
   triplet_counter(int K, size_t reserve_size)
-    : K_(K), ref_id_(0), row_max_(0), col_max_(0), kmer_count_() {
+    : K_(K), ref_id_(0), kmer_count_() {
     kmer_count_.reserve(reserve_size);
   }
   void operator()(const std::string& id, const std::string& seq) {
@@ -137,9 +135,7 @@ struct triplet_counter {
       try {
 	int kmer_id = fasta::kmer_id(kmer);
         kmer_count_.emplace_back(kmer_id, ref_id_, prob_kmer);
-	row_max_ = std::max(row_max_, kmer_id);
-	col_max_ = std::max(col_max_, ref_id_);
-        ++ref_id_;
+	++ref_id_;
       } catch (...) {
 	std::cout << "     # illegal kmer = |" << kmer << "|"
 		  << "   in ref id = " << id.substr(0, std::min<size_t>(15U, id.size()))
@@ -147,22 +143,21 @@ struct triplet_counter {
       }
     }
   }
-  int rows() const { return row_max_ + 1; }
-  int cols() const { return col_max_ + 1; }
   Eigen::SparseMatrix<float, Eigen::RowMajor> to_matrix() const {
     int I = ref_id_;
     int M = static_cast<int>(std::pow(4, K_));
     Eigen::SparseMatrix<float, Eigen::RowMajor> x(M, I);
     x.setFromTriplets(kmer_count_.begin(), kmer_count_.end());
-    std::cout << "E" << std::endl;
-    // std::cout << "x.size() = " << x.size() << std::endl;
     return x;
   }
   void report() const {
     std::cout << "collected triplets" << std::endl;
     std::cout << "attempting to build" << std::endl;
     Eigen::SparseMatrix<float, Eigen::RowMajor> xt = this->to_matrix();
-    std::cout << "FINISHED" << std::endl;
+    std::cout << "xt.size() = " << xt.size() << std::endl;
+    // std::cout << "xt.rows() = " << xt.rows() << std::endl;
+    // std::cout << "xt.cols() = " << xt.cols() << std::endl;
+    std::cout << "finish reporting for triplet handler";
   }
 
 };
@@ -198,25 +193,23 @@ int main() {
 
   coupler<counter, triplet_counter> handler = couple(count_handler, triplet_handler);
   fasta::parse_file(file, handler);
-  count_handler.report();
+  handler.report();
 
-  std::cout << "converting triplets to matrix"
-	    << std::endl;
-  std::cout << "rows = " << triplet_handler.rows()
-	    << ";  cols = " << triplet_handler.cols()
-	    << std::endl;
+  // std::cout << "converting triplets to matrix"
+  // 	    << std::endl;
+  // std::cout << "rows = " << triplet_handler.rows()
+  // 	    << ";  cols = " << triplet_handler.cols()
+  // 	    << std::endl;
+  
   // Eigen::SparseMatrix<float, Eigen::RowMajor> xt(triplet_handler.rows(), triplet_handler.cols());
   // xt.setFromTriplets(triplet_handler.kmer_count_.begin(),
   // triplet_handler.kmer_count_.end());
-  std::cout << "     triplets converted" << std::endl;
+  // std::cout << "     triplets converted" << std::endl;
 
   
   // std::cout << "xt.size() = " << xt.size() << std::endl;
   // std::cout << "xt.rows() = " << xt.rows() << std::endl;
   // std::cout << "xt.cols() = " << xt.cols() << std::endl;
-
-  std::cout << " GOODBYE" << std::endl;
-
 
   // std::random_device dev;
   // std::mt19937 rng(dev());
@@ -243,5 +236,8 @@ int main() {
   // Eigen::VectorXf phi = xt * theta_f;
   // std::cout
   //   << "done multiplying" << phi.size() << std::endl;
+
+  std::cout << "FINI." << std::endl;
+
   return 0;
 }
