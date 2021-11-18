@@ -135,12 +135,12 @@ struct triplet_counter {
       try {
 	int kmer_id = fasta::kmer_id(kmer);
         kmer_count_.emplace_back(kmer_id, ref_id_, prob_kmer);
-	++ref_id_;
       } catch (...) {
 	std::cout << "     # illegal kmer = |" << kmer << "|"
 		  << "   in ref id = " << id.substr(0, std::min<size_t>(15U, id.size()))
 		  << std::endl;
       }
+      ++ref_id_;
     }
   }
   Eigen::SparseMatrix<float, Eigen::RowMajor> to_matrix() const {
@@ -148,6 +148,9 @@ struct triplet_counter {
     int M = static_cast<int>(std::pow(4, K_));
     Eigen::SparseMatrix<float, Eigen::RowMajor> x(M, I);
     x.setFromTriplets(kmer_count_.begin(), kmer_count_.end());
+    std::cout << "xt.size() = " << x.size() << std::endl;
+    std::cout << "xt.rows() = " << x.rows() << std::endl;
+    std::cout << "xt.cols() = " << x.cols() << std::endl;
     return x;
   }
   void report() const {
@@ -155,9 +158,7 @@ struct triplet_counter {
     std::cout << "attempting to build" << std::endl;
     Eigen::SparseMatrix<float, Eigen::RowMajor> xt = this->to_matrix();
     std::cout << "xt.size() = " << xt.size() << std::endl;
-    // std::cout << "xt.rows() = " << xt.rows() << std::endl;
-    // std::cout << "xt.cols() = " << xt.cols() << std::endl;
-    std::cout << "finish reporting for triplet handler";
+    std::cout << "finish reporting for triplet handler" << std::endl;
   }
 
 };
