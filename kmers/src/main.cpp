@@ -114,8 +114,10 @@ struct counter {
   void report() const {
     number_format nf;
     std::cout.imbue({std::locale(), &nf});
-    std::cout << num_targets_ << " targets" << std::endl;
-    std::cout << num_bases_ << " bases" << std::endl;
+    std::cout << "counter.report():  " << num_targets_ << " targets"
+	      << std::endl;
+    std::cout << "counter.report():  " << num_bases_ << " bases"
+	      << std::endl;
   }
 };
 
@@ -148,17 +150,28 @@ struct triplet_counter {
     int M = static_cast<int>(std::pow(4, K_));
     Eigen::SparseMatrix<float, Eigen::RowMajor> x(M, I);
     x.setFromTriplets(kmer_count_.begin(), kmer_count_.end());
-    std::cout << "xt.size() = " << x.size() << std::endl;
-    std::cout << "xt.rows() = " << x.rows() << std::endl;
-    std::cout << "xt.cols() = " << x.cols() << std::endl;
+    std::cout << "triplet_counter.to_matrix():  xt.size() = " << x.size()
+	      << std::endl;
+    std::cout << "triplet_counter.to_matrix():  xt.rows() = " << x.rows()
+	      << std::endl;
+    std::cout << "triplet_counter.to_matrix():  xt.cols() = " << x.cols()
+	      << std::endl;
     return x;
   }
   void report() const {
-    std::cout << "collected triplets" << std::endl;
-    std::cout << "attempting to build" << std::endl;
+    std::cout << "triplet_counter.report():  collected triplets"
+	      << std::endl;
+    std::cout << "triplet_counter.report():  attempting to build"
+	      << std::endl;
     Eigen::SparseMatrix<float, Eigen::RowMajor> xt = this->to_matrix();
-    std::cout << "xt.size() = " << xt.size() << std::endl;
-    std::cout << "finish reporting for triplet handler" << std::endl;
+    std::cout << "triplet_counter.report():  xt.size() = " << xt.size()
+	      << std::endl;
+    std::cout << "triplet_counter.report():  xt.rows() = " << xt.rows()
+	      << std::endl;
+    std::cout << "triplet_counter.report(): xt.cols() = " << xt.cols()
+	      << std::endl;
+    std::cout << "triplet_counter.report():  finish reporting for triplet handler"
+	      << std::endl;
   }
 
 };
@@ -172,17 +185,16 @@ uint64_t num_kmers(uint64_t K) {
 }
 
 int main() {
+  std::string file = "../data/unpacked/GRCh38_latest_rna.fna";
+  std::cout << "main:  fasta file = " << file
+            << std::endl;
+
   std::size_t K = 10;
-  std::cout << "K = " << K
+  std::cout << "main:  K = " << K
 	    << std::endl;
   uint64_t M = num_kmers(K);
-  std::cout << "num kmers = " << M
+  std::cout << "main:  num kmers = " << M
 	    << std::endl;
-
-  // std::string file = "../data/unpacked/refseq-select-2020-10-22.fasta";
-  std::string file = "../data/unpacked/GRCh38_latest_rna.fna";
-  std::cout << "fasta file = " << file
-            << std::endl;
 
   validator validate_handler = validator();
   counter count_handler = counter();
@@ -196,49 +208,6 @@ int main() {
   fasta::parse_file(file, handler);
   handler.report();
 
-  // std::cout << "converting triplets to matrix"
-  // 	    << std::endl;
-  // std::cout << "rows = " << triplet_handler.rows()
-  // 	    << ";  cols = " << triplet_handler.cols()
-  // 	    << std::endl;
-  
-  // Eigen::SparseMatrix<float, Eigen::RowMajor> xt(triplet_handler.rows(), triplet_handler.cols());
-  // xt.setFromTriplets(triplet_handler.kmer_count_.begin(),
-  // triplet_handler.kmer_count_.end());
-  // std::cout << "     triplets converted" << std::endl;
-
-  
-  // std::cout << "xt.size() = " << xt.size() << std::endl;
-  // std::cout << "xt.rows() = " << xt.rows() << std::endl;
-  // std::cout << "xt.cols() = " << xt.cols() << std::endl;
-
-  // std::random_device dev;
-  // std::mt19937 rng(dev());
-
-  // Eigen::VectorXd alpha = Eigen::VectorXd::Ones(M);
-  // Eigen::VectorXd theta = kmers::dirichlet_rng(alpha, rng);
-  // Eigen::VectorXf theta_f(theta.size());
-  // std::cout << "theta_f.size() = " << theta_f.size()
-  // << std::endl;
-  // std::cout << "theta_f(0) = " << theta_f(0)
-  // << std::endl;
-  // for (int i = 0; i < theta.size(); ++i) {
-  // std::cout << "i = " << i << " thta(i) = " << theta(i) << std::endl;
-  // theta_f(i) = theta(i);
-  // }
-
-
-  // std::cout << "hello" << theta_f(0) << std::endl;
-  
-  // std::cout << "theta.size() = " << theta.size() << std::endl;
-
-  // std::cout << "multiplying xt * theta"
-  // << std::endl;
-  // Eigen::VectorXf phi = xt * theta_f;
-  // std::cout
-  //   << "done multiplying" << phi.size() << std::endl;
-
-  std::cout << "FINI." << std::endl;
-
+  std::cout << "main:  FINI." << std::endl;
   return 0;
 }
