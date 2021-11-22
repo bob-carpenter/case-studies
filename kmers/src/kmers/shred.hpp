@@ -36,7 +36,7 @@ void shred(int K, std::istream& in, std::vector<int>& counts, int mask) {
   int kmer = 0;
   // init first k-mer
   for (int k = 0; k < K; ++k) {
-    int b = get_base(in);
+    int b = get_base(in;
     if (b < 0) return;
     kmer = mask & ((kmer << 2) + b);
   }
