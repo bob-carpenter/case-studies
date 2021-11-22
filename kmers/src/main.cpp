@@ -2,11 +2,20 @@
 #include "kmers/fasta-parser.hpp"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
+#include <unsupported/Eigen/src/SparseExtra/MarketIO.h>
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <locale>
+#include <stdexcept>
 #include <vector>
+
+template <typename T>
+void write_val(std::ostream& out, const T& x) {
+  out.write((char *)&x, sizeof(T));
+}
+
 
 struct number_format : public std::numpunct<char> {
   char do_thousands_sep() const { return ','; }
@@ -156,12 +165,14 @@ struct triplet_counter {
 	      << std::endl;
     std::cout << "triplet_counter.to_matrix():  xt.cols() = " << x.cols()
 	      << std::endl;
+    std::cout << "triplet_counter.to_matrix():  attempting to saveMarket"
+	      << std::endl;
     return x;
   }
   void report() const {
-    std::cout << "triplet_counter.report():  collected triplets"
-	      << std::endl;
-    std::cout << "triplet_counter.report():  attempting to build"
+    typedef typename Eigen::SparseMatrix<float, Eigen::RowMajor>::InnerIterator it_t;
+    
+    std::cout << "triplet_counter.report():  collected triplets, building matrix"
 	      << std::endl;
     Eigen::SparseMatrix<float, Eigen::RowMajor> xt = this->to_matrix();
     std::cout << "triplet_counter.report():  xt.size() = " << xt.size()
@@ -172,9 +183,24 @@ struct triplet_counter {
 	      << std::endl;
     std::cout << "triplet_counter.report():  finish reporting for triplet handler"
 	      << std::endl;
+    // see:  https://eigen.tuxfamily.org/dox/unsupported/MarketIO_8h_source.html
+    std::fstream out("xt.bin", std::ios::binary | std::ios::out);
+    if (!out) throw std::runtime_error("couldn't open xt.bin for writing");
+    write_val(out, xt.rows());
+    write_val(out, xt.cols());
+    write_val(out, xt.nonZeros());
+    write_val(out, xt.outerSize());
+    for (int i = 0; i < xt.outerSize(); ++i)
+      for (it_t it(xt, i); it; ++it)
+	write_val(out, it.value());
+    for (int i = 0; i < xt.outerSize(); ++i)
+      for (it_t it(xt, i); it; ++it)
+	write_val(out, it.col());
+    out.close();
   }
 
 };
+
 
 uint64_t num_kmers(uint64_t K) {
   uint64_t y = 1;
