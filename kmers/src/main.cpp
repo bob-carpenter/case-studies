@@ -2,7 +2,6 @@
 #include "kmers/fasta-parser.hpp"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
-#include <unsupported/Eigen/src/SparseExtra/MarketIO.h>
 #include <algorithm>
 #include <cmath>
 #include <fstream>
@@ -13,13 +12,13 @@
 
 template <typename T>
 void write_val(std::ostream& out, const T& x) {
-  out.write((char *)&x, sizeof(T));
+  out.write((char *)(&x), sizeof(T));
 }
 
 template <typename T>
 void write_array(std::ostream& out, const T* x, int N) {
   for (int n = 0; n < N; ++n)
-    write_val(out, x[n]);
+    write_val<T>(out, x[n]);
 }
 
 
@@ -157,8 +156,8 @@ struct triplet_counter {
 		  << "   in ref id = " << id.substr(0, std::min<size_t>(15U, id.size()))
 		  << std::endl;
       }
-      ++ref_id_;
     }
+    ++ref_id_;
   }
   Eigen::SparseMatrix<float, Eigen::RowMajor> to_matrix() const {
     int I = ref_id_;
@@ -171,13 +170,11 @@ struct triplet_counter {
 	      << std::endl;
     std::cout << "triplet_counter.to_matrix():  xt.cols() = " << x.cols()
 	      << std::endl;
-    std::cout << "triplet_counter.to_matrix():  xt.nonZeros() = " << xt.nonZeros()
+    std::cout << "triplet_counter.to_matrix():  xt.nonZeros() = " << x.nonZeros()
 	      << std::endl;
     return x;
   }
   void report() const {
-    typedef typename Eigen::SparseMatrix<float, Eigen::RowMajor>::InnerIterator it_t;
-
     std::cout << "triplet_counter.report():  building matrix"
 	      << std::endl;
     Eigen::SparseMatrix<float, Eigen::RowMajor> xt = this->to_matrix();
@@ -195,15 +192,15 @@ struct triplet_counter {
     std::cout << "triplet_counter.report():  writing to file = " << filename
 	      << std::endl;
 
-    write_val(out, xt.rows());
-    write_val(out, xt.cols());
-    write_val(out, xt.nonZeros());
-    float* values = xt.valuePtr();
-    int* innerIndices = xt.innerIndexPtr();
+    write_val<int>(out, xt.rows());
+    write_val<int>(out, xt.cols());
+    write_val<int>(out, xt.nonZeros());
     int* outerIndices = xt.outerIndexPtr();
-    write_array(out, outerIndices, xt.rows() + 1);
-    write_array(out, innerIndices, xt.nonZeros());
-    write_array(out, values, xt.nonZeros());
+    write_array<int>(out, outerIndices, xt.rows() + 1);
+    int* innerIndices = xt.innerIndexPtr();
+    write_array<int>(out, innerIndices, xt.nonZeros());
+    float* values = xt.valuePtr();
+    write_array<float>(out, values, xt.nonZeros());
     out.close();
     std::cout << "triplet_counter.report():  finished writing to file"
 	      << std::endl;
