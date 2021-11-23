@@ -217,7 +217,7 @@ uint64_t num_kmers(uint64_t K) {
 }
 
 int main() {
-  std::string file = "../data/unpacked/GRCh38_latest_rna.fna";
+  std::string file = "data/unpacked/GRCh38_latest_rna.fna";
   std::cout << "main:  fasta file = " << file
             << std::endl;
 
