@@ -6,8 +6,16 @@
 #include <cmath>
 #include <vector>
 
-// typedef Eigen::SparseMatrix<float, Eigen::RowMajor> sparse_matrix_t;
-
+/**
+ * Return the softmax of the specified vector.  Softmax is defined by
+ *
+ * ```
+ * softmax(alpha) = exp(alpha) / sum(exp(alpha))
+ * ```
+ *
+ * using offsets to prevent underflow of the exponentiation.
+ *
+ */
 Eigen::VectorXf softmax(const Eigen::VectorXf& alpha) {
   using std::exp;
   Eigen::VectorXf delta = Eigen::VectorXf::Constant(alpha.maxCoeff(), alpha.size());
@@ -16,11 +24,14 @@ Eigen::VectorXf softmax(const Eigen::VectorXf& alpha) {
 }
 
 /**
- * Model is
- * 
- * p(y, alpha | xt)
- *   = multinomial(y | xt * softmax(alpha)) * normal(alpha | 0, 3)
- * 
+ * This class defines a Bayesian model implementing the joint density
+ *
+ * ```
+ * log p(y, alpha | xt)
+ *   = log multinomial(y | xt * softmax(alpha)) + log normal(alpha | 0, 3)
+ *   = y' * log(xt * softmax(alpha)) - 1 / (2 * 3^2) * alpha' * alpha
+ * ```
+ *
  * K: kmer size
  * M: number of k-mers (4^K)
  * N: number of reads

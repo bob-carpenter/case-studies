@@ -9,10 +9,25 @@
 namespace fasta {
 namespace internal {
 
+/**
+ * Return `true` if the specified line is an identifier beginning with
+ * the `>` character, which signals the beginning of a new sequence.
+ *
+ * @param line line to test
+ * @return true if the line contains an identifier
+ */
 bool start_seq(std::string& line) {
   return line.size() > 0 && line[0] == '>';
 }
 
+/**
+ * Set the specified line to the last line if the last line is
+ * non-empty or try to read a line from the specified input stream,
+ * returning true if the variable line was set.
+ *
+ * @param in input stream from which to read
+ * @return true if there was a line
+ */
 bool getnextline(std::istream& in, const std::string& last,
                  std::string& line) {
   if (!last.empty()) {
@@ -29,24 +44,24 @@ bool getnextline(std::istream& in, const std::string& last,
 } // namespace internal
 } // namespace fasta
 
+
 namespace fasta {
 
 /**
- * Return the total number of unique k-mers for the specified number
- * of bases.
+ * Return the total number of unique kmers for the specified size.
  *
- * @param K number of bases
- * @return total number of unique k-mers
+ * @param K size of kmer (number of bases)
+ * @return number of unique kmers
  */
 int64_t kmers(int64_t K) {
-  return 1UL << (2 * K);
+  return 1UL << (2 * K);  // integer version of 4^K
 }
 
 /**
- * Return the identifier in the range 0-3 for the specified base.
- * The mapping is defined alphabetically, indexing from zero, so that
- * 'A' maps to 0, 'C' maps to 1, 'G' maps to 2, and 'T' maps to 3,
- * with any other input throwing an exception.
+ * Return the identifier (in range 0-3) for the specified base.  The
+ * mapping is defined alphabetically, indexing from zero, so that 'A'
+ * maps to 0, 'C' maps to 1, 'G' maps to 2, and 'T' maps to 3, with
+ * any other input throwing an exception.
  *
  * @param c character representing a base
  * @return numerical identifier for the base
@@ -66,14 +81,13 @@ std::size_t base_id(char c) {
 }
 
 /**
- * Return a numerical identifier for the specified kmer.  Each k-mer
- * is read as a base-4 number given the base_id() for each k-mer.  For
- * a fixed K, this assigns each K-mer gets a unique ID between 0 and
- * 4^K - 1 based on a lexicographic start, indexing from 0.  The
- * mapping is A = 0, C = 1, G = 2, and T = 3.
+ * Return a numerical identifier for the specified kmer.  Each kmer is
+ * read as a base-4 number with digits defined by the `base_id()`
+ * function.  For kmers of size K, this assigns each kmer a
+ * unique identifer between 0 and 4^K - 1 inclusive.
  *
- * @param kmer string representing a k-mer
- * @return identifier for the k-mer.
+ * @param kmer string representing a kmer
+ * @return identifier for the kmer.
  * @throw std::runtime_error if there are characters in kmer other
  * than 'A', 'C', 'G', or 'T'.
  */
@@ -84,17 +98,20 @@ std::size_t kmer_id(const std::string& kmer) {
   return id;
 }
 
-
-
 /**
- * Parse the data in fasta format from the specified inputs stream,
- * sending reads to the specified callback handler.  The callback
- * handler must be a functor implementing `void operator()(const
- * std::string& id, const std::string& seq)`.
+ * Read identifiers and sequences from the FASTA input stream and send
+ * them to the specified callback handler, including those with
+ * identifiers marked as `PREDICTED` (i.e., not verified) if the flag
+ * is set to `true`.
+ *
+ * The callback handler must be a functor implementing a method
+ * `void operator()(const std::string& id, const std::string& seq)`.
  *
  * @tparam F type of callback handler
  * @param[in,out] in input stream
  * @param[in] f callback handler
+ * @param include_predicted `true` if sequences marked `PREDICTED` are
+ * included
  */
 template <typename F>
 void parse_stream(std::istream& in, F& f, bool include_predicted = false) {
@@ -121,14 +138,15 @@ void parse_stream(std::istream& in, F& f, bool include_predicted = false) {
 
 
 /**
- * Parse the data in fasta form from the specified file, sending reads
- * to the specified callback handler.The callback
- * handler must be a functor implementing `void operator()(const
- * std::string& id, const std::string& seq)`.
+ * Convert the specified file name to an input stream and delegate to
+ * the stream parser as `parse_file(std::istream&, F&, bool)`, closing
+ * the file stream when finished reading.
  *
  * @tparam F type of callback handler
  * @param[in] filename system path to file
  * @param[in] f callback handler
+ * @param include_predicted `true` if sequences marked `PREDICTED` are
+ * included
  */
 template <typename F>
 void parse_file(const std::string& filename, F& f,

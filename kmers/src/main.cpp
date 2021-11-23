@@ -16,6 +16,12 @@ void write_val(std::ostream& out, const T& x) {
   out.write((char *)&x, sizeof(T));
 }
 
+template <typename T>
+void write_array(std::ostream& out, const T* x, int N) {
+  for (int n = 0; n < N; ++n)
+    write_val(out, x[n]);
+}
+
 
 struct number_format : public std::numpunct<char> {
   char do_thousands_sep() const { return ','; }
@@ -165,40 +171,43 @@ struct triplet_counter {
 	      << std::endl;
     std::cout << "triplet_counter.to_matrix():  xt.cols() = " << x.cols()
 	      << std::endl;
-    std::cout << "triplet_counter.to_matrix():  attempting to saveMarket"
+    std::cout << "triplet_counter.to_matrix():  xt.nonZeros() = " << xt.nonZeros()
 	      << std::endl;
     return x;
   }
   void report() const {
     typedef typename Eigen::SparseMatrix<float, Eigen::RowMajor>::InnerIterator it_t;
-    
-    std::cout << "triplet_counter.report():  collected triplets, building matrix"
+
+    std::cout << "triplet_counter.report():  building matrix"
 	      << std::endl;
     Eigen::SparseMatrix<float, Eigen::RowMajor> xt = this->to_matrix();
-    std::cout << "triplet_counter.report():  xt.size() = " << xt.size()
-	      << std::endl;
+    std::cout << "triplet_counter.report():  compressing" <<
+	      std::endl;
+    xt.makeCompressed();
     std::cout << "triplet_counter.report():  xt.rows() = " << xt.rows()
 	      << std::endl;
-    std::cout << "triplet_counter.report(): xt.cols() = " << xt.cols()
+    std::cout << "triplet_counter.report():  xt.cols() = " << xt.cols()
 	      << std::endl;
-    std::cout << "triplet_counter.report():  finish reporting for triplet handler"
-	      << std::endl;
-    // see:  https://eigen.tuxfamily.org/dox/unsupported/MarketIO_8h_source.html
-    std::fstream out("xt.bin", std::ios::binary | std::ios::out);
+
+    std::string filename = "xt.bin";
+    std::fstream out(filename, std::ios::binary | std::ios::out);
     if (!out) throw std::runtime_error("couldn't open xt.bin for writing");
+    std::cout << "triplet_counter.report():  writing to file = " << filename
+	      << std::endl;
+
     write_val(out, xt.rows());
     write_val(out, xt.cols());
     write_val(out, xt.nonZeros());
-    write_val(out, xt.outerSize());
-    for (int i = 0; i < xt.outerSize(); ++i)
-      for (it_t it(xt, i); it; ++it)
-	write_val(out, it.value());
-    for (int i = 0; i < xt.outerSize(); ++i)
-      for (it_t it(xt, i); it; ++it)
-	write_val(out, it.col());
+    float* values = xt.valuePtr();
+    int* innerIndices = xt.innerIndexPtr();
+    int* outerIndices = xt.outerIndexPtr();
+    write_array(out, outerIndices, xt.rows() + 1);
+    write_array(out, innerIndices, xt.nonZeros());
+    write_array(out, values, xt.nonZeros());
     out.close();
+    std::cout << "triplet_counter.report():  finished writing to file"
+	      << std::endl;
   }
-
 };
 
 
