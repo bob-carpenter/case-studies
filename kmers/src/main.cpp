@@ -194,27 +194,32 @@ struct triplet_counter {
 };
 
 
-int main() {
-  std::string file = "data/unpacked/GRCh38_latest_rna.fna";
-  std::cout << "main:  fasta file = " << file
+int main(int argc, char *argv[]) {
+  std::string fastafile = argv[1];
+  std::cout << "main:  fasta file = " << fastafile
+            << std::endl;
+
+  std::string binoutfile = argv[2];
+  std::cout << "main:  binary output file = " << binoutfile
             << std::endl;
 
   std::size_t K = 10;
   std::cout << "main:  K = " << K
 	    << std::endl;
+
   uint64_t M = num_kmers(K);
   std::cout << "main:  num kmers = " << M
 	    << std::endl;
 
   // shredder shred_handler = shredder(K);
-  validator validate_handler = validator();
+  // validator validate_handler = validator();
   counter count_handler = counter();
   triplet_counter triplet_handler = triplet_counter(K);
 
   coupler<counter, triplet_counter> handler = couple(count_handler, triplet_handler);
-  fasta::parse_file(file, handler);
+  fasta::parse_file(fastafile, handler);
   handler.report();
-  triplet_handler.write_matrix("xt.bin");
+  triplet_handler.write_matrix(binoutfile);
 
   std::cout << "main:  FINI." << std::endl;
   return 0;
