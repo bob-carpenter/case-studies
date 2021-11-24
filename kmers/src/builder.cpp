@@ -10,8 +10,8 @@
 #include <stdexcept>
 #include <vector>
 
-uint64_t num_kmers(uint64_t K) {
-  uint64_t y = 1;
+int64_t num_kmers(int64_t K) {
+  int64_t y = 1;
   for (int k = 0; k < K; ++k) {
     y *= 4;
   }
@@ -24,8 +24,8 @@ void write_val(std::ostream& out, const T& x) {
 }
 
 template <typename T>
-void write_array(std::ostream& out, const T* x, int N) {
-  for (int n = 0; n < N; ++n)
+void write_array(std::ostream& out, const T* x, int32_t N) {
+  for (int32_t n = 0; n < N; ++n)
     write_val<T>(out, x[n]);
 }
 
@@ -80,10 +80,10 @@ struct shredder {
   std::vector<int32_t> count_;
   shredder(int64_t K) : K_(K), count_(fasta::kmers(K), 0) { }
   void operator()(const std::string& id, const std::string& seq) {
-    for (int start = 0; start < (seq.size() - K_ + 1); ++start) {
+    for (int32_t start = 0; start < (seq.size() - K_ + 1); ++start) {
       std::string kmer = seq.substr(start, K_);
       try {
-	int id = fasta::kmer_id(kmer);
+	int32_t id = fasta::kmer_id(kmer);
 	++count_[id];
       } catch (...) {
 	std::cout << "     # illegal kmer = |" << kmer << "|"
@@ -144,17 +144,17 @@ struct counter {
 };
 
 struct triplet_counter {
-  int K_;
-  int ref_id_;
-  std::vector<Eigen::Triplet<float, int>> kmer_count_;
-  triplet_counter(int K) : K_(K), ref_id_(0), kmer_count_() { }
+  int32_t K_;
+  int32_t ref_id_;
+  std::vector<Eigen::Triplet<float, int32_t>> kmer_count_;
+  triplet_counter(int32_t K) : K_(K), ref_id_(0), kmer_count_() { }
   void operator()(const std::string& id, const std::string& seq) {
-    int num_kmers = seq.size() - K_ + 1;
+    int32_t num_kmers = seq.size() - K_ + 1;
     float prob_kmer = 1.0f / num_kmers;
-    for (int start = 0; start < num_kmers; ++start) {
+    for (int32_t start = 0; start < num_kmers; ++start) {
       std::string kmer = seq.substr(start, K_);
       try {
-	int kmer_id = fasta::kmer_id(kmer);
+	int32_t kmer_id = fasta::kmer_id(kmer);
         kmer_count_.emplace_back(kmer_id, ref_id_, prob_kmer);
       } catch (...) {
 	std::cout << "     # illegal kmer = |" << kmer << "|"
@@ -165,11 +165,12 @@ struct triplet_counter {
     ++ref_id_;
   }
   void write_matrix(const std::string& filename) const {
-    int M = num_kmers(K_);
-    int N = ref_id_;
+    int32_t M = num_kmers(K_);
+    int32_t N = ref_id_;
     Eigen::SparseMatrix<float, Eigen::RowMajor> x(M, N);
     x.setFromTriplets(kmer_count_.begin(), kmer_count_.end());
     x.makeCompressed();
+
     std::fstream out(filename, std::ios::binary | std::ios::out);
     if (!out) {
       throw std::runtime_error("cannot open file = " + filename
@@ -207,7 +208,7 @@ int main(int argc, char* argv[]) {
   std::cout << "main:  K = " << K
 	    << std::endl;
 
-  uint64_t M = num_kmers(K);
+  int32_t M = num_kmers(K);
   std::cout << "main:  num kmers = " << M
 	    << std::endl;
 
