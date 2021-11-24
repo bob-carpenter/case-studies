@@ -13,7 +13,7 @@ reader: src/reader.cpp
 	clang++ -O${O} -g -std=c++14 -I src/ -I ${EIGEN_LIB} -o reader src/reader.cpp
 
 read: xt.bin reader
-	time ./reader
+	time ./reader ${BINARY_OUT_FILE}
 
 clean:
 	rm -fR .DS_Store data/.DS_Store xtBuilder xtBuilder.dSYM reader reader.dSYM

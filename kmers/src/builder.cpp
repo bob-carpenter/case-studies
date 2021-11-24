@@ -194,7 +194,7 @@ struct triplet_counter {
 };
 
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
   std::string fastafile = argv[1];
   std::cout << "main:  fasta file = " << fastafile
             << std::endl;

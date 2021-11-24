@@ -19,11 +19,11 @@ std::vector<T> read_array(std::istream& in, int N) {
   return y;
 }
 
-int main() {
-  std::string filename = "xt.bin";
+Eigen::Map<Eigen::SparseMatrix<float, Eigen::RowMajor>>
+read_xt(const std::string& filename) {
   std::fstream in(filename, std::ios::binary | std::ios::in);
   if (!in) {
-    std::string msg = "couldn't open file = " + filename;
+    std::string msg = "reader: couldn't open file = " + filename;
     throw std::runtime_error(msg);
   }
   int cols = read_val<int>(in);
@@ -50,16 +50,33 @@ int main() {
   std::cout << "reader: read innerIndices"
             << std::endl;
 
+  in.close();
+  std::cout << "reader:  finished reading, closed file stream"
+            << std::endl;
+
   std::cout << "reader:  building Eigen::Map"
             << std::endl;
 
-  Eigen::Map<Eigen::SparseMatrix<float, Eigen::RowMajor>>
-      xt(rows, cols, nnz, outerIndexPtr.data(), innerIndices.data(), values.data());
 
-  std::cout << "reader:  finished building map"
+  return Eigen::Map<Eigen::SparseMatrix<float, Eigen::RowMajor>>(
+      rows, cols, nnz, outerIndexPtr.data(), innerIndices.data(),
+      values.data());
+}
+
+int main(int argc, char* argv[]) {
+  std::string filename = argv[1];
+  std::cout << "reader: reading from filename = " << filename
+            << std::endl;
+
+  Eigen::Map<Eigen::SparseMatrix<float, Eigen::RowMajor>> xt
+      = read_xt(filename);
+
+  std::cout << "reader:  built matrix"
             << std::endl;
   std::cout << "reader:  xt.rows() = " << xt.rows()
             << std::endl;
-
-  in.close();
+  std::cout << "reader:  xt.cols() = " << xt.rows()
+            << std::endl;
+  std::cout << "reader:  xt.nonZeros() = " << xt.nonZeros()
+            << std::endl;
 }
