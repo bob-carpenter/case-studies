@@ -1,11 +1,13 @@
 O = 3
 EIGEN_LIB = ~/github/stan-dev/cmdstan/stan/lib/stan_math/lib/eigen_3.3.9
+TRANSCRIPTOME = data/unpacked/GRCh38_latest_rna.fna
+BINARY_OUT_FILE = xt.bin
 
-xtBuilder : src/main.cpp
-	clang++ -O${O} -g -std=c++14 -I src/ -I ${EIGEN_LIB} -o xtBuilder src/main.cpp
+builder : src/builder.cpp
+	clang++ -O${O} -g -std=c++14 -I src/ -I ${EIGEN_LIB} -o builder src/builder.cpp
 
-xt.bin: xtBuilder
-	time ./xtBuilder data/unpacked/GRCh38_latest_rna.fna xt.bin
+xt.bin: builder
+	time ./builder ${TRANSCRIPTOME} ${BINARY_OUT_FILE}
 
 reader: src/reader.cpp
 	clang++ -O${O} -g -std=c++14 -I src/ -I ${EIGEN_LIB} -o reader src/reader.cpp
