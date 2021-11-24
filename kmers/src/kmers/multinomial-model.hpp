@@ -4,6 +4,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 #include <cmath>
+#include <stdexcept>
 #include <vector>
 
 /**
@@ -15,10 +16,12 @@
  *
  * using offsets to prevent underflow of the exponentiation.
  *
+ * @param alpha unconstrained input vector
+ * @return softmax of input
  */
 Eigen::VectorXf softmax(const Eigen::VectorXf& alpha) {
   using std::exp;
-  Eigen::VectorXf delta = Eigen::VectorXf::Constant(alpha.maxCoeff(), alpha.size());
+  auto delta = Eigen::VectorXf::Constant(alpha.size(), alpha.maxCoeff());
   Eigen::VectorXf phi = (alpha - delta).array().exp();
   return delta + phi / phi.sum();
 }
@@ -42,18 +45,29 @@ Eigen::VectorXf softmax(const Eigen::VectorXf& alpha) {
  * alpha: (T x 1) vector of log odds
  */
 struct multinomial_model {
+  const Eigen::Map<Eigen::SparseMatrix<float, Eigen::RowMajor>>& xt_;
   const Eigen::VectorXf& y_;
-  const Eigen::SparseMatrix<float, Eigen::RowMajor>& xt_;
 
-  multinomial_model(const Eigen::VectorXf& y,
-		    const Eigen::SparseMatrix<float, Eigen::RowMajor>& xt)
-    : y_(y), xt_(xt) { }
+  multinomial_model(
+      const Eigen::Map<Eigen::SparseMatrix<float, Eigen::RowMajor>>& xt,
+      const Eigen::VectorXf& y)
+      : xt_(xt), y_(y) {
+    if (xt.cols() != y.rows()) {
+       throw std::runtime_error("xt rows must equal y cols");
+    }
+  }
 
   float log_density(const Eigen::VectorXf& beta) {
     Eigen::VectorXf theta = softmax(beta);
-    Eigen::VectorXf xt_sm_a =  (xt_ * theta).array().log();
-    float log_likelihood = y_.transpose() * xt_sm_a;
-    float log_prior = -0.125 * beta.dot(beta);
+    std::cout << "beta.size() = " << beta.size()
+              << "; theta.size() = " << theta.size()
+              << std::endl;
+    std::cout << "model:  xt_.rows() = " << xt_.rows() << std::endl;
+    std::cout << "model:  xt_.cols() = " << xt_.cols() << std::endl;
+    // Eigen::VectorXf xt_sm_a =  (xt_ * theta).array().log();
+    float log_likelihood = 0;
+    // float log_likelihood = y_.transpose() * xt_sm_a;
+    float log_prior = -0.125 * beta.transpose() * beta;
     return log_likelihood + log_prior;
   }
 
@@ -66,18 +80,13 @@ struct multinomial_model {
     grad = grad_likelihood + grad_prior;
   }
 
-  std::vector<int> sample(uint64_t N, const Eigen::VectorXf& beta) {
-    return kmers::multinomial_rng(N, xt_ * softmax(beta));
-  }
+  //   std::vector<int> sample(uint64_t N, const Eigen::VectorXf& beta) {
+  // return std::multinomial_rng(N, xt_ * softmax(beta));
+  // }
 
-  std::vector<int> sample(uint64_t N, double mu, double sigma) {
-    return std::vector<int>();
-  }
-
+  // std::vector<int> sample(uint64_t N, double mu, double sigma) {
+  // return std::vector<int>();
+  // }
 };
-
-int main() {
-  return 0;
-}
 
 #endif

@@ -9,7 +9,7 @@ builder : src/builder.cpp
 xt.bin: builder
 	time ./builder ${TRANSCRIPTOME} ${BINARY_OUT_FILE}
 
-reader: src/reader.cpp
+reader: src/reader.cpp src/kmers/multinomial-model.hpp
 	clang++ -O${O} -g -std=c++14 -I src/ -I ${EIGEN_LIB} -o reader src/reader.cpp
 
 read: xt.bin reader
