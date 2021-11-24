@@ -10,6 +10,14 @@
 #include <stdexcept>
 #include <vector>
 
+uint64_t num_kmers(uint64_t K) {
+  uint64_t y = 1;
+  for (int k = 0; k < K; ++k) {
+    y *= 4;
+  }
+  return y;
+}
+
 template <typename T>
 void write_val(std::ostream& out, const T& x) {
   out.write((char *)(&x), sizeof(T));
@@ -159,62 +167,33 @@ struct triplet_counter {
     }
     ++ref_id_;
   }
-  Eigen::SparseMatrix<float, Eigen::RowMajor> to_matrix() const {
+  void write_matrix(const std::string& filename) {
     int I = ref_id_;
     int M = static_cast<int>(std::pow(4, K_));
     Eigen::SparseMatrix<float, Eigen::RowMajor> x(M, I);
     x.setFromTriplets(kmer_count_.begin(), kmer_count_.end());
-    std::cout << "triplet_counter.to_matrix():  xt.size() = " << x.size()
-	      << std::endl;
-    std::cout << "triplet_counter.to_matrix():  xt.rows() = " << x.rows()
-	      << std::endl;
-    std::cout << "triplet_counter.to_matrix():  xt.cols() = " << x.cols()
-	      << std::endl;
-    std::cout << "triplet_counter.to_matrix():  xt.nonZeros() = " << x.nonZeros()
-	      << std::endl;
-    return x;
+    x.makeCompressed();
+    std::fstream out(filename, std::ios::binary | std::ios::out);
+    if (!out) throw std::runtime_error("cannot open file = " + filename
+                                       + " for writing");
+    write_val<int>(out, x.rows());
+    write_val<int>(out, x.cols());
+    write_val<int>(out, x.nonZeros());
+    int* outerIndices = x.outerIndexPtr();
+    write_array<int>(out, outerIndices, x.rows() + 1);
+    int* innerIndices = x.innerIndexPtr();
+    write_array<int>(out, innerIndices, x.nonZeros());
+    float* values = x.valuePtr();
+    write_array<float>(out, values, x.nonZeros());
+    out.close();
   }
   void report() const {
-    std::cout << "triplet_counter.report():  building matrix"
-	      << std::endl;
-    Eigen::SparseMatrix<float, Eigen::RowMajor> xt = this->to_matrix();
-    std::cout << "triplet_counter.report():  compressing" <<
-	      std::endl;
-    xt.makeCompressed();
-    std::cout << "triplet_counter.report():  xt.rows() = " << xt.rows()
-	      << std::endl;
-    std::cout << "triplet_counter.report():  xt.cols() = " << xt.cols()
-	      << std::endl;
-
-    std::string filename = "xt.bin";
-    std::fstream out(filename, std::ios::binary | std::ios::out);
-    if (!out) throw std::runtime_error("couldn't open xt.bin for writing");
-    std::cout << "triplet_counter.report():  writing to file = " << filename
-	      << std::endl;
-
-    write_val<int>(out, xt.rows());
-    write_val<int>(out, xt.cols());
-    write_val<int>(out, xt.nonZeros());
-    int* outerIndices = xt.outerIndexPtr();
-    write_array<int>(out, outerIndices, xt.rows() + 1);
-    int* innerIndices = xt.innerIndexPtr();
-    write_array<int>(out, innerIndices, xt.nonZeros());
-    float* values = xt.valuePtr();
-    write_array<float>(out, values, xt.nonZeros());
-    out.close();
-    std::cout << "triplet_counter.report():  finished writing to file"
-	      << std::endl;
+    // writing kmer_count_.size(), K_, or ref_id_ causes abnormal termination
+    std::cout << "triplet_counter.report():  nothing to report"
+              << std::endl;
   }
 };
 
-
-uint64_t num_kmers(uint64_t K) {
-  uint64_t y = 1;
-  for (int k = 0; k < K; ++k) {
-    y *= 4;
-  }
-  return y;
-}
 
 int main() {
   std::string file = "data/unpacked/GRCh38_latest_rna.fna";
@@ -230,15 +209,15 @@ int main() {
 
   validator validate_handler = validator();
   counter count_handler = counter();
-  shredder shred_handler = shredder(K);
+  // shredder shred_handler = shredder(K);
 
-  size_t max_id_kmer = 600000000;
-  size_t reserve = 10;
-  triplet_counter triplet_handler = triplet_counter(K, reserve);
+  int reserve_size = 300000000;
+  triplet_counter triplet_handler = triplet_counter(K, reserve_size);
 
   coupler<counter, triplet_counter> handler = couple(count_handler, triplet_handler);
   fasta::parse_file(file, handler);
   handler.report();
+  triplet_handler.write_matrix("xt.bin");
 
   std::cout << "main:  FINI." << std::endl;
   return 0;
