@@ -147,10 +147,7 @@ struct triplet_counter {
   int K_;
   int ref_id_;
   std::vector<Eigen::Triplet<float, int>> kmer_count_;
-  triplet_counter(int K, size_t reserve_size)
-    : K_(K), ref_id_(0), kmer_count_() {
-    kmer_count_.reserve(reserve_size);
-  }
+  triplet_counter(int K) : K_(K), ref_id_(0), kmer_count_() { }
   void operator()(const std::string& id, const std::string& seq) {
     int num_kmers = seq.size() - K_ + 1;
     float prob_kmer = 1.0f / num_kmers;
@@ -167,15 +164,17 @@ struct triplet_counter {
     }
     ++ref_id_;
   }
-  void write_matrix(const std::string& filename) {
-    int I = ref_id_;
-    int M = static_cast<int>(std::pow(4, K_));
-    Eigen::SparseMatrix<float, Eigen::RowMajor> x(M, I);
+  void write_matrix(const std::string& filename) const {
+    int M = num_kmers(K_);
+    int N = ref_id_;
+    Eigen::SparseMatrix<float, Eigen::RowMajor> x(M, N);
     x.setFromTriplets(kmer_count_.begin(), kmer_count_.end());
     x.makeCompressed();
     std::fstream out(filename, std::ios::binary | std::ios::out);
-    if (!out) throw std::runtime_error("cannot open file = " + filename
-                                       + " for writing");
+    if (!out) {
+      throw std::runtime_error("cannot open file = " + filename
+                               + " for writing");
+    }
     write_val<int>(out, x.rows());
     write_val<int>(out, x.cols());
     write_val<int>(out, x.nonZeros());
@@ -207,12 +206,10 @@ int main() {
   std::cout << "main:  num kmers = " << M
 	    << std::endl;
 
+  // shredder shred_handler = shredder(K);
   validator validate_handler = validator();
   counter count_handler = counter();
-  // shredder shred_handler = shredder(K);
-
-  int reserve_size = 300000000;
-  triplet_counter triplet_handler = triplet_counter(K, reserve_size);
+  triplet_counter triplet_handler = triplet_counter(K);
 
   coupler<counter, triplet_counter> handler = couple(count_handler, triplet_handler);
   fasta::parse_file(file, handler);
