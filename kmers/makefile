@@ -16,7 +16,7 @@ read: xt.bin reader
 	time ./reader ${BINARY_OUT_FILE}
 
 clean:
-	rm -fR .DS_Store data/.DS_Store xtBuilder xtBuilder.dSYM reader reader.dSYM
+	rm -fR .DS_Store data/.DS_Store builder builder.dSYM reader reader.dSYM
 
 clean-all: clean
-	rm xt.bin
+	rm -f xt.bin

@@ -27,12 +27,12 @@ read_xt(const std::string& filename) {
     std::string msg = "reader: couldn't open file = " + filename;
     throw std::runtime_error(msg);
   }
-  int32_t cols = read_val<int>(in);
-  std::cout << "reader:  cols = " << cols
-            << std::endl;
-
   int32_t rows = read_val<int>(in);
   std::cout << "reader:  rows = " << rows
+            << std::endl;
+
+  int32_t cols = read_val<int>(in);
+  std::cout << "reader:  cols = " << cols
             << std::endl;
 
   int32_t nnz = read_val<int>(in);
