@@ -12,9 +12,10 @@ transformed parameters {
 }
 model {
   alpha ~ normal(0, 4);
-  for (n in 1:N) {
-    for (k in 1:K - 1) {
-      1 ~ bernoulli_logit(alpha[y[n, k]] - alpha[y[n, k+1:K]]);
-    }
-  }
+  array[S] vector[S] log_prob_prefer;
+  for (s in 1:S)
+    log_prob_prefer[s] = log_inv_logit(alpha[s] - alpha);
+  for (n in 1:N)
+    for (k in 1:K - 1)
+      target += log_prob_prefer[y[n, k], y[n, k+1:K]];
 }
