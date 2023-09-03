@@ -22,3 +22,6 @@ item_names = df_items.iloc[:, 1].values
 item_scores = [np.mean(fit.stan_variable('alpha')[:,i]) for i in range(100)]
 df_out = pd.DataFrame({'type': item_names, 'score': item_scores})
 df_out.sort_values(by='score', ascending=False, inplace=True)
+print(df_out.to_string())
+for n in range(100):
+    print(f"{df_out.iloc[n, :]['type']:15s} {df_out.iloc[n, :]['score']:6.3f}")
