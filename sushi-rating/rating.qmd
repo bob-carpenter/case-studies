@@ -3,7 +3,7 @@ title: "Combining Rating and Ranking:"
 subtitle: "Plackett-Luce ranking and ordinal logit rating models in Stan"
 author: "Bob Carpenter"
 date: "last-modified"
-jupyter: python3    
+jupyter: python3
 filters:
     - include-code-files
 format:
@@ -21,8 +21,8 @@ format:
     number-depth: 2
     toc: true
     toc-location: right
-    code-fold: false
-    code-copy: true
+#    code-fold: false
+#    code-copy: true
     cap-location: bottom
     format-links: false
     embed-resources: true
@@ -46,30 +46,18 @@ bibliography: references.bib
 
 # Preface {.unnumbered}
 
+## Python setup {.unnumbered}
+
 We will first load all of the libraries in Python that we will need
 
-```python
+```{python}
 import urllib.request
 import zipfile
 import os
+
 import numpy as np
 import pandas as pd
 import cmdstanpy as csp
-```
-
-We do not have permission to redistribute the data with our case
-study, so we will download it and unzip it into a top-level directory
-`sushi3-2016`.
-
-```python
-url = "https://www.kamishima.net/asset/sushi3-2016.zip"
-download_path = "sushi3-2016.zip"
-output_dir = "./"
-if not os.path.isdir(output_dir):
-    os.makedirs(output_dir, exist_ok=True)
-    urllib.request.urlretrieve(url, download_path)
-    with zipfile.ZipFile(download_path, 'r') as zip_ref:
-        zip_ref.extractall(output_dir)
 ```
 
 
@@ -87,25 +75,63 @@ their preferences for sushi and made it available:
 
 * [Sushi Preference data set](https://www.kamishima.net/sushi/)
 
-For each of these sushi raters, they collected preference data for 10
-types of sushi selected at random from a total collection of 100 types
-of sushi.  Each rater provided two types of information,
+For each of the $R$ raters, they collected preference data for $K = 10$
+types of sushi selected at random from a total collection of $I = 100$ different
+types of sushi.  Each rater provided two forms of rating,
 
-* rank ordering of 10 pieces of sushi
-* ordinal ratings on a 1--5 scale of the pieces of sushi (5 being
-* better) 
+1. rank ordering of 10 pieces of sushi
+2. ordinal ratings on a 1--5 scale of the pieces of sushi (5 being better)
 
+For the rank ordering, the head of the rank ordering data file looks like this:
 
+`sushi3b.5000.10.order`
 ```
+100 1
+0 10 58 4 3 44 87 60 67 1 12 74
+0 10 22 31 60 21 8 24 6 12 17 76
+0 10 2 15 13 1 6 25 46 74 56 55
+0 10 8 0 3 9 24 43 4 5 29 40
+0 10 9 47 50 30 4 19 99 55 31 13
+```
+
+The first row is just metadata about how many pieces of sushi there
+are.  The first column is just a meaningless 0 and the second an
+indicator of how many items are ranked.  The remaining columns say
+that the first rater ranked type 58 higher than type 4, which was in
+turn higher than type 3, and so on.
+
+For more details on how the data was collected, see the readme with
+the data distribution or the paper by @kamishima2003.
+
+## Downloading the data {.unnumbered}
+
+We do not have permission to redistribute the data with our case
+study, so we first download it and unzip it into the directory
+`sushi3-2016`.
+
+```{python}
+url = "https://www.kamishima.net/asset/sushi3-2016.zip"
+download_path = "sushi3-2016.zip"
+output_dir = "./"
+if not os.path.isdir("sushi3-2016"):
+    urllib.request.urlretrieve(url, download_path)
+    with zipfile.ZipFile(download_path, 'r') as zip_ref:
+        zip_ref.extractall(output_dir)
+```
+
+# The model
+
+# Fitting the model
+
+```{python}
 df = pd.read_csv('sushi3-2016/sushi3b.5000.10.order',
                      delim_whitespace=True, header=None, skiprows=1)
 df = df.drop(columns=[0, 1])
 y = df.to_numpy()
 y = y + 1   # data indexes items from 0
 y = y.astype(int)
-rev_row_y = y[::-1]  
+rev_row_y = y[:, ::-1]  # reverse rows
 data_dict = {'I': 100, 'R': 5000, 'K': 10, 'y': rev_row_y }
-
 model = csp.CmdStanModel(stan_file = 'plackett-luce.stan')
 fit = model.sample(data = data_dict, chains = 4, parallel_chains=4, show_console = True,
                        refresh=20, iter_warmup = 500, iter_sampling=500)
@@ -116,4 +142,5 @@ item_names = df_items.iloc[:, 1].values
 item_scores = [np.mean(fit.stan_variable('alpha')[:,i]) for i in range(100)]
 df_out = pd.DataFrame({'type': item_names, 'score': item_scores})
 df_out.sort_values(by='score', ascending=False, inplace=True)
+print(df_out)
 ```
