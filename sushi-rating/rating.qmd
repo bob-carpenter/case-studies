@@ -1,5 +1,5 @@
 ---
-title: "Combining Rating and Ranking:"
+title: "Combining rating and ranking:"
 subtitle: "Plackett-Luce ranking and ordinal logit rating models in Stan"
 author: "Bob Carpenter"
 date: "last-modified"
@@ -68,7 +68,7 @@ data, the Plackett-Luce model of ranking and the ordinal logistic
 model of rating.  We will further combine them into a single model
 with a likelihood for each data stream.
 
-## The data
+# The data
 
 Toshihiro Kamishima collected data from $R = 5000$ Japanese raters about
 their preferences for sushi and made it available:
@@ -110,6 +110,7 @@ study, so we first download it and unzip it into the directory
 `sushi3-2016`.
 
 ```{python}
+#| code-fold: true
 url = "https://www.kamishima.net/asset/sushi3-2016.zip"
 download_path = "sushi3-2016.zip"
 output_dir = "./"
@@ -119,11 +120,186 @@ if not os.path.isdir("sushi3-2016"):
         zip_ref.extractall(output_dir)
 ```
 
-# The model
 
-# Fitting the model
+# The Bradley-Terry model
+
+@bradley1952 collected data from consumers about their preferences
+between pairs of consumer goods among a larger set of such goods.
+
+## Preference probability
+
+The model works by assigning a latent quality score to each
+item and using a logistic model of the probability of a consumer
+preferring one to another.  Technically, we assume we have $I \in
+\mathbb{N}$ such items and they have scores $\alpha_i \in \mathbb{R}.$
+We let $Y \in \{ 0, 1 \}$ be the binary random variable taking on
+value 1 if a specific rater $r$ ranks item $i$ higher than item $j$.
+This probability is modeled as 
+$$
+\Pr[\textrm{rater } r \textrm{ prefers } i \textrm{ to } j]
+= \textrm{logit}^{-1}(\alpha_i - \alpha_j),
+$$
+where the log odds function $\textrm{logit}:(0, 1) \rightarrow \mathbb{R}$ is defined by
+$$
+\textrm{logit}(u) = \log\left( \frac{u}{1 - u} \right).
+$$
+It's inverse is the logistic function $\textrm{logit}^{-1}:\mathbb{R}
+\rightarrow (0, 1)$, defined by 
+$$
+\textrm{logit}^{-1}(v) = \frac{\exp(v)}{1 + \exp(v)}.
+$$
+A little algebra shows that
+$$
+\textrm{logit}^{-1}(\alpha_i - \alpha_j)
+= \frac{\exp(\alpha_i)}{\exp(\alpha_i) + \exp(\alpha_j)}.
+$$
+In other words, $\alpha_i$ is proportional to the log odds.
+
+
+## Generative model
+
+Because not every rater is going to rate every item, we have what is
+known as an incomplete block design.  To accomodate that notationally,
+we will assume that we collect a total of $N$ ratings and that rating
+$n \in 1{:}N$ is between items $i_n$ and $j_n$.  Putting our model into
+generative form, we have
+
+$$
+Y_n \sim \textrm{bernoulli}(\textrm{logit}^{-1}(\alpha_{i_n} -
+\alpha_{j_n})).
+$$
+
+## Non-identifiability of full-rank model
+
+If we let the $\alpha_i$ be independent parameters, the model is not
+identified because
+$$
+p(y \mid \alpha) = p(y \mid \alpha + c)
+$$
+for any constant $c \in \mathbb{R}$.  This form of additive
+non-identifiability can be mitigated in several ways.
+
+The first approach to identifying the model is to fix (aka pin, clamp)
+one of the parameters to a fixed value, conventionally $\alpha_1 = 0$.
+This method is not ideal because it makes the model asymmetric in the
+parameters, which presents a challenge to assigning reasonable priors
+under exchangeability assumptions (i.e., the ordering of the
+items shouldn't matter).
+
+Second, the set of parameters can be constrained to sum to a fixed
+value, conventionally $\sum_{i = 1}^I \alpha_i = 0$.  This can be done
+by taking $I - 1$ free paramters and setting $\alpha_I = -\sum_{i =
+1}^{I-1} \alpha_i$.
+
+With either of these solutions, the model can be fit with maximum
+likelihodo if the data are not separable.  
+
+A typical example of separability would arise if
+there is one item $i$ that everyone prefers---in that case, there is no
+maximum likelihood estimate as the likleihood increases as $\alpha_i
+\rightarrow \finty$).
+
+To deal with separability, we can take a third approach to identifying
+the combined prior and likelihood, which is to add a proper Bayesian
+prior such as $\alpha_i \sim \textrm{normal}(0, \sigma)$.  The value
+of $\sigma$ may be fixed or it may be taken as a hyperparameter and
+modeled hierarchically.  The second approach (sum to zero) and the
+third approach (proper Bayesian prior) can be fruitfully combined.
+
+## Positive parameterization
+
+An alternative way to parameterize the Bradley-Terry model is to use
+all-positive parameters $\beta_i > 0$ and set
+$$
+\Pr[\textrm{rater } r \textrm{ prefers } i \textrm{ to } j]
+= \frac{\beta_i}{\beta_i + \beta_j}.
+$$
+Under this parameterization, the model has a multiplicative
+non-identifiability in that
+$$
+p(y \mid \beta) = p(y \mid c \cdot \beta)
+$$
+for any $c \in (0, \infty)$.
+
+Multiplicative non-identifiabilities can be mitigated in roughly the
+same three ways as additive non-identifiabilities.  First, a value can
+be pinned to a positive value such as 1.  Second, the values can be
+constrained to have a fixed product, such as 1, by constraining $I -
+1$ parameters to be positive and setting $\beta_I = \left(
+\prod_{i=1}^{I - 1} \beta_i \right)^{-1}$.  Third, we can use a proper
+and positively constrained distribution to define a prior.
+
+There is a simple alternative approach that identifies the model and
+handles the multiplicative non-identifiability at the same time.  We
+can simply let the parameters form a simplex.  Specifically, this
+means constraining $\beta$ by requiring $\beta_i > 0$ and
+$\sum_{i=1}^I \beta_i = 1$.  Tne sum-to-one constraint sets the scale
+and the simplex has $I - 1$ dimensions (because $\beta_I = 1 - \sum_{i
+= 1}^{I - 1} \beta_i$).
+
+## Relation to ELO
+
+Although the eponymous ``ELO'' model for chess is much better known
+than the Bradley-Terry model, it is just a reparameterization of the
+Bradley-Terry model with stochastic gradient updates.  
+
+The Bradley-Terry model was rediscovered by @elo1967, who used a
+scaled, base-10 sigmoid function $f(u) = \frac{1}{1 + 10^{-u / 400}}$
+rather than the logistic sigmoid ($\textmr{logit}^{-1}$).  A simple
+change of variables turns it back into the Bradley-Terry model.
+Presumably Elo's intent was to make it easier for non-mathematicians
+to understand and to put the parameter values on a ``human'' scale
+(order 1000). 
+
+@elo1967 also introduced an update rule, which is what you would get
+from applying the stochastic gradient descent algorithm of
+@robbins1951 to the Bradley-Terry model.
+
+Elo also considers ties, Elo's work also handled ties, which he did by
+considering a ``binomial'' observation of 0.5.  @davidson1970 provided
+a properly generative model by generalizing the two-category
+Bradley-Terry model to an ordinal logistic regression.  We will return
+to the ordinal logistic model later when we combine numerical ratings
+and rankings.
+
+
+
+# The Plackett-Luce model of ranking
+
+## The model
+
+@luce1959 introduced a normative axiom govering choice, namely that if
+we are to stochasically choose among $N$ objects according to some
+discrete probability distribution, then if we choose among a subset of
+the objects, the relative probabilities are the same.  For example, if
+suppose I am given a choice among three ice cream flavors, vanilla,
+chocolate, and strawberry, and I choose among them with a 70%
+proabability of choosing strawberry, a 20% probability of choosing
+vanilla, and a 10% probability of choosing chocolate. Then Luce's
+axiom states that if I had a choice of only vanilla and chocolate then
+my probability of choosing vanilla should be $\frac{0.2}{0.2 + 0.1}$
+and if I had a choice between chocolate and strawberry, my probability
+of choosing strawberry will be $\frac{0.7}{0.7 + 0.1}.$ Similarly,
+let's say I add butter pecan and now have a four way choice.  If I
+have a 50% chance of choosing butter pecan, then my chance of choosing
+strawberry must be $\frac{0.7}{2}$, my chance of choosing vanilla
+$\frac{0.2}{2}$ and my chance of choosing chocolate $\frac{0.1}{2}$.
+We just normalize the probabilities so that they add up to 1 and the
+relative probabilities among our original choices remains the same.
+
+@plackett1975 independently discovered the model two decades later
+and it has since been known as the Placett-Luce model.
+
+
+
+
+
+## Coding the model in Stan
+
+## Fitting the model
 
 ```{python}
+#| output: false
 df = pd.read_csv('sushi3-2016/sushi3b.5000.10.order',
                      delim_whitespace=True, header=None, skiprows=1)
 df = df.drop(columns=[0, 1])
@@ -132,10 +308,15 @@ y = y + 1   # data indexes items from 0
 y = y.astype(int)
 rev_row_y = y[:, ::-1]  # reverse rows
 data_dict = {'I': 100, 'R': 5000, 'K': 10, 'y': rev_row_y }
-model = csp.CmdStanModel(stan_file = 'plackett-luce.stan')
-fit = model.sample(data = data_dict, chains = 4, parallel_chains=4, show_console = True,
-                       refresh=20, iter_warmup = 500, iter_sampling=500)
 
+model = csp.CmdStanModel(stan_file = 'plackett-luce.stan')
+fit = model.sample(data = data_dict, chains = 1,
+                   iter_warmup = 100, iter_sampling=100,
+                   parallel_chains=4, show_console = True,
+                   refresh=20)
+```
+
+```{python}
 df_items = pd.read_csv('sushi3-2016/sushi3.idata',
                            delim_whitespace=True, header=None)
 item_names = df_items.iloc[:, 1].values
