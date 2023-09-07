@@ -14,6 +14,6 @@ parameters {
   simplex[I] alpha;                     // item quality
 }
 model {
-  for (y_n in y)
-    y_n ~ plackett_luce(alpha);
+  for (y_r in y)
+    y_r ~ plackett_luce(alpha);
 }
