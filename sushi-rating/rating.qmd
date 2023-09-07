@@ -21,8 +21,6 @@ format:
     number-depth: 2
     toc: true
     toc-location: right
-#    code-fold: false
-#    code-copy: true
     cap-location: bottom
     format-links: false
     embed-resources: true
@@ -55,9 +53,11 @@ import urllib.request
 import zipfile
 import os
 
+import scipy.stats
 import numpy as np
 import pandas as pd
 import cmdstanpy as csp
+import plotnine as pn
 ```
 
 
@@ -82,6 +82,8 @@ types of sushi.  Each rater provided two forms of rating,
 1. rank ordering of 10 pieces of sushi
 2. ordinal ratings on a 1--5 scale of the pieces of sushi (5 being better)
 
+## Ranking data
+
 For the rank ordering, the head of the rank ordering data file looks like this:
 
 `sushi3b.5000.10.order`
@@ -102,6 +104,16 @@ turn higher than type 3, and so on.
 
 For more details on how the data was collected, see the readme with
 the data distribution or the paper by @kamishima2003.
+
+## Rating data
+
+For the rating data, there is one row per rater.  A rating of -1 indicates missing data---items not rated.
+
+`sushi3b.5000.10.score`
+```
+-1 0 -1 4 2 -1 -1 -1 -1 -1 -1 -1 1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 4 -1 2 -1 -1 -1 -1 -1 -1 0 -1 -1 -1 -1 -1 -1 0 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 2 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+-1 -1 -1 -1 -1 -1 0 -1 1 -1 -1 -1 0 -1 -1 -1 -1 0 -1 -1 -1 1 2 -1 0 -1 -1 -1 -1 -1 -1 1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 0 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+```
 
 ## Downloading the data {.unnumbered}
 
@@ -156,7 +168,7 @@ $$
 In other words, $\alpha_i$ is proportional to the log odds.
 
 
-## Generative model
+## Bradley-Terry sampling distribution
 
 Because not every rater is going to rate every item, we have what is
 known as an incomplete block design.  To accomodate that notationally,
@@ -268,7 +280,7 @@ and rankings.
 
 # The Plackett-Luce model of ranking
 
-## The model
+## The Luce axiom
 
 @luce1959 introduced a normative axiom govering choice, namely that if
 we are to stochasically choose among $N$ objects according to some
@@ -289,6 +301,8 @@ $\frac{0.2}{2}$ and my chance of choosing chocolate $\frac{0.1}{2}$.
 We just normalize the probabilities so that they add up to 1 and the
 relative probabilities among our original choices remain the same.
 
+## Plackett-Luce sampling distribution
+
 @plackett1975 independently discovered the model two decades later and
 it has come to be known as the Plackett-Luce model.  The ranking model
 is generative.  Given a set of items, they are chosen one by one
@@ -296,8 +310,6 @@ without replacement to produce the ranking.  The probabilty of
 choosing an item from a set of items is always proportional to the
 item's quality.  This will ensure that the likelihood will satisfy
 Luce's axiom by construction.
-
-## Plackett-Luce sampling distribution
 
 The Plackett-Luce sampling distribution (aka likelihood when viewed as
 a function of the parameters) defines the probability of observing
@@ -324,7 +336,7 @@ p(y \mid \beta)
 = \prod_{k = 2}^{K} \frac{\beta_{y_k}}{\sum_{k' = 1}^k \beta_{y_{k'}}}.
 $$
 
-## Normalization
+### Normalization {.unnumbered}
 
 The normalization of this model is a bit subtle.  As specified here,
 the model technically conditions on the items being ranked. That is, a
@@ -347,6 +359,19 @@ $$
 \sum_{y' \textrm{ a permuation of } y} p(y' \mid \beta, \textrm{set}(y)) = 1.
 $$
 
+### Identification
+
+We have the same problem with multiplicative non-identifiability as we
+do in the Bradley-Terry model with positive-constrained parameters and
+we will employ the solution we mentioned earlier to identify the
+model, which is to constrain the parameters to lie in the $I -
+1$-simplex, i.e., $\beta \in \Delta^{I-1}$, where we define
+$$
+\Delta^{I-1}
+= \{ x \in [0, \inf)^I \
+     : \ x_i \geq 0 \textrm{ and } \textrm{sum}(x) = 1 \}.
+$$
+
 ## Extended ranking models
 
 The Plackett-Luce model naturally extends to observations such as
@@ -363,21 +388,12 @@ Such a model would be useful in cases where the tail of the ranking is
 censored.  For instance, one might call off a race after the first ten
 finishers have crossed the finish line.
 
-## Identification
-
-We have the same problem with multiplicative non-identifiability as we
-do in the Bradley-Terry model with positive-constrained parameters and
-we will employ the solution we mentioned earlier to identify the
-model, which is to constrain the parameters to lie in the $I -
-1$-simplex, i.e., $\beta \in \Delta^{I-1}$, where we define
-$$
-\Delta^{I-1}
-= \{ x \in [0, \inf)^I \
-     : \ x_i \geq 0 \textrm{ and } \textrm{sum}(x) = 1 \}.
-$$
 
 
-## Coding the model in Stan
+
+## Fitting Plackett-Luce with Stan
+
+### Coding the model {.unnumbered}
 
 The Stan code for the model relies on the fact that the denominators
 in the sampling probabilty mass function are terms in the cumulative
@@ -404,7 +420,8 @@ for-each loop, with `y_n in y` iterating over all of the elements of
 `y`.  Bcause `y` is declared as a two-dimensional `R` by `K` array,
 `y_n` will be a one-dimensional `K` array.
 
-## Fitting the model
+
+### Fitting the model {.unnumbered}
 
 First, we collect all the data.
 ```{python}
@@ -431,7 +448,7 @@ using the `sample` method.
 ```{python}
 #| output: false
 fit = model.sample(data = data_dict, chains = 1,
-                   iter_warmup = 100, iter_sampling = 100,
+                   iter_warmup = 30, iter_sampling = 30,
                    parallel_chains = 4, show_console = True,
                    refresh = 20)
 ```
@@ -445,6 +462,24 @@ df_items = pd.read_csv('sushi3-2016/sushi3.idata',
 item_names = df_items.iloc[:, 1].values
 ```
 
+The following code reads the English descriptions out of lines 56--155
+of the mostly unstructured file `README-en.txt` where entries look as follows.
+
+```
+ 0:ebi (shrimp)
+```
+
+```{python}
+desc = []
+with open('sushi3-2016/README-en.txt', 'r') as f:
+    for i, line in enumerate(f):
+        if i < 55: continue
+        if i >= 155: break
+        paren_start = line.find('(') + 1
+        paren_end = line.find(')')
+        desc.append(line[paren_start:paren_end])
+```
+
 We then define point estimates of the parameters as posterior means.
 
 ```{python}
@@ -456,7 +491,92 @@ Then we can put the item names and scores into a data frame, sort by
 value, and print.
 
 ```{python}
-df_out = pd.DataFrame({'type': item_names, 'score': item_scores})
+df_out = pd.DataFrame({'type': item_names, 'score': item_scores, 'desc': desc})
 df_out.sort_values(by='score', ascending=False, inplace=True)
-print(df_out)
+# df_out.reset_index(drop=True)
+print(f"rank  score   type (description)")
+for index, (_, row) in enumerate(df_out.iterrows()):
+    print(f"{(index + 1):4d}  {row['score']:6.4f}  {row['type']}  ({row['desc']})")
 ```
+
+The top four pieces are all tuna, followed by two forms of shrimp and
+then salmon.  Yellowtail (buri) is in the mid-20s and raw beef
+(gyusashi) is the mid-50s.  There are also many pieces you don't find
+very often in the United States as sushi, including kujira (whale),
+kamo (duck), raw chicken (samami) and blowfish (fugu).  The pieces
+with the lowest scores are sea cucumber (namako), okra (okura) and seq
+squirt (hoya).
+
+
+# Ordinal logistic rating model
+
+Now we turn to dealing with the rating data, where each of the raters
+provided a score between 0 and 4 (4 being best) for the same 10 types
+of sushi as they ranked.  Here, we are going to employ an ordinal
+logistic rating model.  The underlying generative model is
+straightforward.  We generate scores for each of the items on a log
+odds scale, then we set cutoffs for the rating.
+
+Specifically, suppose we have $K$ categories, which in our case has $K
+= 5$ because raters provide ratings on a 1 to 5 scale.   Each item
+gets a score $\eta_i \in \mathbb{R}$ and we have a vector of cutpoints
+$c \in \mathbb{R}^{K-1}$ that is ordered so that $c_1 < c_2 \cdots <
+c_{K-1}$.  The probabilty of providing a rating of $k$ is given by
+$$
+\textrm{OrderedLogistic}(k \mid \eta, c)
+=
+\begin{cases}
+1 - \textrm{logit}^{-1}(\eta - c_1)
+& \textrm{if } k = 1
+\\[4pt]
+\textrm{logit}^{-1}(\eta - c_{k-1}) - \textrm{logit}^{-1}(\eta - c_k)
+& \textrm{if } k > 1 \textrm{ and } k < K
+\\[4pt]
+\textrm{logit}^{-1}(\eta - c_{K-1}) - 0
+& \textrm{if } k = K.
+\end{cases}
+$$
+
+Because inverse logit is the cumulative distribution function of the
+standard logistic distribution, these probabilities have a natural
+interpretation.  The cutpoints divide the real line into intervals,
+and the probabilities here are the cumulative probability of those
+intervals.  The value of $\eta$ shifts the logistic distribution under
+the cutpoints.  We can visualize this as follows.  For the sake of
+this example, let's suppose we have $K = 4$ and we have cutpoints
+$c = [-1 \quad 0 \quad 1]^{\top}$.  We can plot those cutpoints over
+the distribution $\textrm{logistic}(\eta, 1)$ to visualize how the
+probabilities vary with $\eta$.
+
+```{python}
+x_values = np.linspace(-8, 10, 200)
+categories = [-2, 0, 4]
+dfs = []
+for cat in categories:
+    y_values = scipy.stats.logistic.pdf(x_values, loc=cat, scale=1)
+    temp_df = pd.DataFrame({'x': x_values, 'y': y_values, 'Category': [f"eta = {cat}"] * len(x_values)})
+    dfs.append(temp_df)
+final_df = pd.concat(dfs, ignore_index=True)
+plot = (pn.ggplot(final_df, pn.aes(x='x', y='y'))
+        + pn.geom_line()
+        + pn.geom_vline(pn.aes(xintercept=-1.2), color='blue')
+        + pn.geom_vline(pn.aes(xintercept=0.3), color='blue')
+        + pn.geom_vline(pn.aes(xintercept=2.9), color='blue')
+        + pn.scale_x_continuous(limits=(-8, 10), expand=(0, 0))
+        + pn.scale_y_continuous(limits=(0, 0.26), expand=(0, 0))
+        + pn.labs(x="x", y="logistic(x | loc, 1)")
+        + pn.facet_wrap('~Category')
+        + pn.theme(panel_spacing=0.025,
+	           figure_size = (6, 2))
+)
+print(plot)
+```
+In this example, we are going to use a single sequence of cutpoints
+and assume that the scores do not vary by rater.  Of course, people
+have different preferences for sushi, but what we are trying to
+estimate is something like a consensus view of preferences.  
+
+
+
+
+
