@@ -237,27 +237,29 @@ $\sum_{i=1}^I \beta_i = 1$.  Tne sum-to-one constraint sets the scale
 and the simplex has $I - 1$ dimensions (because $\beta_I = 1 - \sum_{i
 = 1}^{I - 1} \beta_i$).
 
-## Relation to ELO
+## Relation to Elo
 
-Although the eponymous ``ELO'' model for chess is much better known
-than the Bradley-Terry model, it is just a reparameterization of the
-Bradley-Terry model with stochastic gradient updates.  
-
-The Bradley-Terry model was rediscovered by @elo1967, who used a
-scaled, base-10 sigmoid function $f(u) = \frac{1}{1 + 10^{-u / 400}}$
-rather than the logistic sigmoid ($\textmr{logit}^{-1}$).  A simple
+The famous chess ranking model of @elo1967 was discovered
+independently, but it is just a reparameterization of the
+Bradley-Terry model.  Elo used a
+scaled, base-10 sigmoid function
+$$'
+f(u) = \frac{1}{1 + 10^{-u / 400}}
+$$
+rather than the logistic sigmoid ($\textrm{logit}^{-1}$).  A simple
 change of variables turns it back into the Bradley-Terry model.
 Presumably Elo's intent was to make it easier for non-mathematicians
 to understand and to put the parameter values on a ``human'' scale
-(order 1000). 
+(i.e., order 1000)
 
-@elo1967 also introduced an update rule, which is what you would get
-from applying the stochastic gradient descent algorithm of
-@robbins1951 to the Bradley-Terry model.
+@elo1967 also introduced an update rule, which allows rankings to be
+updated after observing a single match.  This turns out to be
+equivalent to what you would get by applying the stochastic gradient
+descent algorithm of @robbins1951 to the Bradley-Terry model.
 
-Elo also considers ties, Elo's work also handled ties, which he did by
-considering a ``binomial'' observation of 0.5.  @davidson1970 provided
-a properly generative model by generalizing the two-category
+Elo's work also handled ties, which he handled by considering a
+``Bernoulli''-like observation of 0.5.  @davidson1970 developed a
+properly generative model by generalizing the two-category
 Bradley-Terry model to an ordinal logistic regression.  We will return
 to the ordinal logistic model later when we combine numerical ratings
 and rankings.
@@ -285,16 +287,121 @@ have a 50% chance of choosing butter pecan, then my chance of choosing
 strawberry must be $\frac{0.7}{2}$, my chance of choosing vanilla
 $\frac{0.2}{2}$ and my chance of choosing chocolate $\frac{0.1}{2}$.
 We just normalize the probabilities so that they add up to 1 and the
-relative probabilities among our original choices remains the same.
+relative probabilities among our original choices remain the same.
 
-@plackett1975 independently discovered the model two decades later
-and it has since been known as the Placett-Luce model.
+@plackett1975 independently discovered the model two decades later and
+it has come to be known as the Plackett-Luce model.  The ranking model
+is generative.  Given a set of items, they are chosen one by one
+without replacement to produce the ranking.  The probabilty of
+choosing an item from a set of items is always proportional to the
+item's quality.  This will ensure that the likelihood will satisfy
+Luce's axiom by construction.
+
+## Plackett-Luce sampling distribution
+
+The Plackett-Luce sampling distribution (aka likelihood when viewed as
+a function of the parameters) defines the probability of observing
+rankings.  We will assume there is a set of $I$ items. The
+distribution is parameterized by a positive-constrained $I$-vector
+$\beta \in (0, \infty)^I$.
+
+The data we will observe will be ascending rank orderings of $K$
+items.  For example, if a rater is given items 13, 48, 9, and 83, an
+observation might be $Y = (13, 48, 9, 83).$  The probability of an 
+obseration is defined to satisfy the Luce axioms with item probabilities
+proportional to $\beta_i$,
+$$
+\Pr[Y = (13, 48, 9, 83) \mid \beta]
+= \frac{\beta_{83}}{\beta_{83} + \beta_9 + \beta_{48} + \beta_{13}}
+\cdot \frac{\beta_9}{\beta_9 + \beta_{48} + \beta_{13}}
+\cdot \frac{\beta_{48}}{\beta_{48} + \beta_{13}}.
+$$
+Given a general $K$-array $y \in (1:I)^K$ without duplicated entries,
+the probability mass function for the Plackett-Luce model with
+positive-constrained parameters is
+$$
+p(y \mid \beta)
+= \prod_{k = 2}^{K} \frac{\beta_{y_k}}{\sum_{k' = 1}^k \beta_{y_{k'}}}.
+$$
+
+## Normalization
+
+The normalization of this model is a bit subtle.  As specified here,
+the model technically conditions on the items being ranked. That is, a
+rater is given items and asked to rank them.  Thus we should
+technically be writing the generative model as $p(y \mid \beta,
+\textrm{set}(y))$ to indicate the conditioning on the set of elements
+$\textrm{set}(y) = \{ y_k : k \in 1:K \}$ being ranked.  The items
+chosen to have raters rank is part of the experimental design, which
+can be as simple as assigning ten items to each rater chosen uniformly
+from the set of items without replacement.  But whatever the design
+is, it is assumed to be fixed.  An alternative would be to assign data
+to rank randomly according to a random design that could be modeled.
+For example, we could give each rater $\textrm{Poisson}(5)$ items to
+rate chose uniformly from all items without replacement.
+
+The sequential nature of the selection means that a simple inductive
+proof is enough to show the distribution is properly normalized given
+the items being ranked, so that
+$$
+\sum_{y' \textrm{ a permuation of } y} p_Y(y' \mid \beta, \textrm{set}(y)) = 1.
+$$
+
+## Extended ranking models
+
+The model can also be extended quite easily to observations such as
+top-10 lists drawn from among a larger set of items.  
+For example,
+choosing the top 10 items among a 100-item set would be modeled by
+following the Luce axiom,
+$$
+p(y \mid \beta)
+= \prod_{n=1}^{10}
+\frac{\beta_{y_n}}
+     {\textrm{sum}(\beta) - \beta_{y_1} - \cdots - \beta_{y_{n-1}}}.
+$$     
 
 
+## Identification
 
+We have the same problem with multiplicative non-identifiability as we
+do in the Bradley-Terry model with positive-constrained parameters and
+we will employ the solution we mentioned earlier to identify the
+model, which is to constrain the parameters to lie in the $I -
+1$-simplex, i.e., $\beta \in \Delta^{I-1}$, where we define
+$$
+\Delta^{I-1}
+= \{ x \in [0, \inf)^I \
+     : \ x_i \geq 0 \textrm{ and } \textrm{sum}(x) = 1 \}.
+$$
 
 
 ## Coding the model in Stan
+
+The Stan code for the model relies on the fact that the denominators
+in the sampling probabilty mass function are terms in the cumulative
+sum of all of the items being ranked.
+
+```{.stan include="plackett-luce.stan" filename="plackett-luce.stan"}
+```
+
+In more detail, we have defined a function `placket_luce_lpmf`, which
+allows us to model each observation $y_n$ as beign generated from that
+distribution.  The conditioning on the set of items being ranked is
+implicit.  We use the elementwise division operator `./` to divide the
+parameters by the cumulative sums in the definition.  We then put
+everything on the log scale, which turns the product into a sum.
+
+The ranking sare themselves an array of integers of size $R \times K$,
+which encodes the assumption that each rater ranks the same number of
+items.  The constraints on `y` implement a test to make sure the
+elements supplied as data are indexes into the items $1:I$.
+
+The parameters are declared as a vector of size `I` that form a
+simplex (i.e., a member of $\Delta^{I - 1}$).  The model is ust a
+for-each loop, with `y_n in y` iterating over all of the elements of
+`y`.  Bcause `y` is declared as a two-dimensional `R` by `K` array,
+`y_n` will be a one-dimensional `K` array.
 
 ## Fitting the model
 
@@ -311,9 +418,9 @@ data_dict = {'I': 100, 'R': 5000, 'K': 10, 'y': rev_row_y }
 
 model = csp.CmdStanModel(stan_file = 'plackett-luce.stan')
 fit = model.sample(data = data_dict, chains = 1,
-                   iter_warmup = 100, iter_sampling=100,
-                   parallel_chains=4, show_console = True,
-                   refresh=20)
+                   iter_warmup = 100, iter_sampling = 100,
+                   parallel_chains = 4, show_console = True,
+                   refresh = 20)
 ```
 
 ```{python}
