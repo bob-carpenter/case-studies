@@ -344,14 +344,13 @@ The sequential nature of the selection means that a simple inductive
 proof is enough to show the distribution is properly normalized given
 the items being ranked, so that
 $$
-\sum_{y' \textrm{ a permuation of } y} p_Y(y' \mid \beta, \textrm{set}(y)) = 1.
+\sum_{y' \textrm{ a permuation of } y} p(y' \mid \beta, \textrm{set}(y)) = 1.
 $$
 
 ## Extended ranking models
 
-The model can also be extended quite easily to observations such as
-top-10 lists drawn from among a larger set of items.  
-For example,
+The Plackett-Luce model naturally extends to observations such as
+top-10 lists drawn from among a larger set of items.  For example,
 choosing the top 10 items among a 100-item set would be modeled by
 following the Luce axiom,
 $$
@@ -360,7 +359,9 @@ p(y \mid \beta)
 \frac{\beta_{y_n}}
      {\textrm{sum}(\beta) - \beta_{y_1} - \cdots - \beta_{y_{n-1}}}.
 $$     
-
+Such a model would be useful in cases where the tail of the ranking is
+censored.  For instance, one might call off a race after the first ten
+finishers have crossed the finish line.
 
 ## Identification
 
@@ -392,7 +393,7 @@ implicit.  We use the elementwise division operator `./` to divide the
 parameters by the cumulative sums in the definition.  We then put
 everything on the log scale, which turns the product into a sum.
 
-The ranking sare themselves an array of integers of size $R \times K$,
+The rankings are themselves an array of integers of size $R \times K$,
 which encodes the assumption that each rater ranks the same number of
 items.  The constraints on `y` implement a test to make sure the
 elements supplied as data are indexes into the items $1:I$.
@@ -405,8 +406,8 @@ for-each loop, with `y_n in y` iterating over all of the elements of
 
 ## Fitting the model
 
+First, we collect all the data.
 ```{python}
-#| output: false
 df = pd.read_csv('sushi3-2016/sushi3b.5000.10.order',
                      delim_whitespace=True, header=None, skiprows=1)
 df = df.drop(columns=[0, 1])
@@ -415,19 +416,46 @@ y = y + 1   # data indexes items from 0
 y = y.astype(int)
 rev_row_y = y[:, ::-1]  # reverse rows
 data_dict = {'I': 100, 'R': 5000, 'K': 10, 'y': rev_row_y }
+```
 
+Then we compile the model.
+
+```{python}
+#| output: false
 model = csp.CmdStanModel(stan_file = 'plackett-luce.stan')
+```
+
+The model defines the posterior density, from which we can sample
+using the `sample` method.
+
+```{python}
+#| output: false
 fit = model.sample(data = data_dict, chains = 1,
                    iter_warmup = 100, iter_sampling = 100,
                    parallel_chains = 4, show_console = True,
                    refresh = 20)
 ```
 
+In order to inspect the results, we can read in the metadata
+from the supplied file and extract the item names.
+
 ```{python}
 df_items = pd.read_csv('sushi3-2016/sushi3.idata',
                            delim_whitespace=True, header=None)
 item_names = df_items.iloc[:, 1].values
-item_scores = [np.mean(fit.stan_variable('alpha')[:,i]) for i in range(100)]
+```
+
+We then define point estimates of the parameters as posterior means.
+
+```{python}
+item_scores = [np.mean(fit.stan_variable('alpha')[:,i])
+               for i in range(100)]
+```
+
+Then we can put the item names and scores into a data frame, sort by
+value, and print.
+
+```{python}
 df_out = pd.DataFrame({'type': item_names, 'score': item_scores})
 df_out.sort_values(by='score', ascending=False, inplace=True)
 print(df_out)
