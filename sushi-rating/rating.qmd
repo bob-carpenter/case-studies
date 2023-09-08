@@ -374,10 +374,13 @@ $$
 
 ## Extended ranking models
 
+### Top-*n* models
+
 The Plackett-Luce model naturally extends to observations such as
 top-10 lists drawn from among a larger set of items.  For example,
 choosing the top 10 items among a 100-item set would be modeled by
-following the Luce axiom,
+following the Luce axiom, where $y$ is the top items in ascending
+order. 
 $$
 p(y \mid \beta)
 = \prod_{n=1}^{10}
@@ -388,6 +391,56 @@ Such a model would be useful in cases where the tail of the ranking is
 censored.  For instance, one might call off a race after the first ten
 finishers have crossed the finish line.
 
+### *n*-th place finishers
+
+Suppose we are interested in the probablity of a given item occurring
+at a given rank given our observed ratings? This turns out to be easy
+to calculate using MCMC methods, as we will show later. The formal
+definition is a little more daunting.  For example, if we are
+interested in the probability of an item being ranked third best
+overall, we can take
+$$
+\Pr[i \textrm{ ranked 3rd}]
+= \sum_{j = 1}^I \, \sum_{k = 1}^I \textrm{I}(j \neq i) \, \textrm{I}(j \neq
+k) \, \textrm{I}(k \neq i) \, \Pr[\textrm{top 3 are } i, j, k],
+$$
+where the top-3 probability is calculated as described in the previous
+section.
+
+This requires considering $\mathcal{O}(I^2)$ items that might be
+higher ranked.   Extending to higher ranks explicitly is going to grow
+in cost exponentially, with rank $N$ costing $\mathcal{O}(I^N)$.  It
+turns out that estimating these ranking probabilities to within a
+given standard error is much more tractable.
+
+
+### Win, show, or place
+
+The motivation for the developing the model, according to the first
+line of @plackett1975, is
+
+> In 1965 I was consulted by a bookmaker with the following problem.
+When there are 8 or more runners in the field, a punter may bet that a
+specified horse will be placed, i.e. finish in the first three.
+
+The term "punter" is British slang for a persom who bets against a
+bookmaker. The term "place" means finishing among the top three and
+"show" means finishing in the top two. Consider the probability of
+placing, which is just the probability of the mutually exclusive
+events of finishing first, second, or third,
+$$
+\Pr[i \textrm{ places}]
+= \Pr[i \textrm{ranked first}]
++ \Pr[i \textrm{ranked second}]
++ \Pr[i \textrm{ranked third}].
+$$
+
+With the model we are formulating, we can calculate the
+probability of an item being ranked 3rd by marginalizing over all the
+first two choices.  This will cost $\mathcal{O}(I^2)$ when there are
+$I$ items and lower ranks go up in cost exponentially.  But it can be
+defined by
+where the top-3 probability is as defined in the previous section.
 
 
 
@@ -483,7 +536,7 @@ with open('sushi3-2016/README-en.txt', 'r') as f:
 We then define point estimates of the parameters as posterior means.
 
 ```{python}
-item_scores = [np.mean(fit.stan_variable('alpha')[:,i])
+item_scores = [np.mean(fit.stan_variable('beta')[:,i])
                for i in range(100)]
 ```
 
@@ -517,6 +570,8 @@ logistic rating model.  The underlying generative model is
 straightforward.  We generate scores for each of the items on a log
 odds scale, then we set cutoffs for the rating.
 
+## Generative ordinal logistic model
+
 Specifically, suppose we have $K$ categories, which in our case has $K
 = 5$ because raters provide ratings on a 1 to 5 scale.   Each item
 gets a score $\eta_i \in \mathbb{R}$ and we have a vector of cutpoints
@@ -549,6 +604,9 @@ the distribution $\textrm{logistic}(\eta, 1)$ to visualize how the
 probabilities vary with $\eta$.
 
 ```{python}
+#| fig-cap: "**Visualizing ordinal logit probabilities.** *The plots show a standard logistic distribution shifted by *`eta`*.  The blue lines indicate the cutpoints, which partition the x-axis into four regions.  The areas of the shifted logistic curves in those regions are the probabilities of the ordinal outcomes.  For example, the probability of the lowest rating of 1 is the area to the left of the leftmost cutpoint, the probability of a 2 outcome the area between the two leftmost cutpoints, and the probability of a 4 outcome is the area to the right of the blue line.  As *`eta`* increases, the probabilities of higher ratings go up.*"
+#| code-fold: true
+
 x_values = np.linspace(-8, 10, 200)
 categories = [-2, 0, 4]
 dfs = []
@@ -564,10 +622,10 @@ plot = (pn.ggplot(final_df, pn.aes(x='x', y='y'))
         + pn.geom_vline(pn.aes(xintercept=2.9), color='blue')
         + pn.scale_x_continuous(limits=(-8, 10), expand=(0, 0))
         + pn.scale_y_continuous(limits=(0, 0.26), expand=(0, 0))
-        + pn.labs(x="x", y="logistic(x | loc, 1)")
+        + pn.labs(x="x", y="logistic(x - eta | 0, 1)")
         + pn.facet_wrap('~Category')
         + pn.theme(panel_spacing=0.025,
-	           figure_size = (6, 2))
+	           figure_size = (8, 8/3))
 )
 print(plot)
 ```
@@ -576,7 +634,20 @@ and assume that the scores do not vary by rater.  Of course, people
 have different preferences for sushi, but what we are trying to
 estimate is something like a consensus view of preferences.  
 
+## Identifiability
 
-
+The only terms involving the parameters are of the form $\eta_i - c_k$
+where $\eta_i$ is an item quality and $c_k$ is a cutpoint.  This means
+that the model is not identified in the sense that
+$$
+\textrm{OrderedLogistic}(k \mid \eta, c)
+= \textrm{OrderedLogistic}(k \mid \eta + d, c + d),
+$$
+where $d \in \mathbb{R}$.  We can deal with this non-identifiabilty by
+constraining the qualities to sum to zero.  We will do this by
+enforcing the constraint that
+$$
+\eta_I = -\sum_{i = 1}^{I - 1} \eta_i.
+$$
 
 
