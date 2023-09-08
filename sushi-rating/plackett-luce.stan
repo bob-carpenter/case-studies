@@ -1,7 +1,7 @@
 functions {
-  real plackett_luce_lpmf(array[] int y, vector alpha) {
-    vector[size(y)] alpha_y = alpha[y];
-    return sum(log(alpha_y ./ cumulative_sum(alpha_y)));
+  real plackett_luce_lpmf(array[] int y, vector beta) {
+    vector[size(y)] beta_y = beta[y];
+    return sum(log(beta_y ./ cumulative_sum(beta_y)));
   }
 }
 data {
@@ -11,9 +11,10 @@ data {
   array[R, K] int<lower=1, upper=I> y;  // rankings (y[r, 1] < y[r, 2] < ...)
 }
 parameters {
-  simplex[I] alpha;                     // item quality
+  simplex[I] beta;                     // item quality
 }
 model {
-  for (y_r in y)
-    y_r ~ plackett_luce(alpha);
+  for (r in 1:R) {
+    y[r] ~ plackett_luce(beta);
+  }
 }

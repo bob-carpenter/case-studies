@@ -6,12 +6,16 @@ data {
   array[R, K] int<lower=1, upper=5> z;   // ordinal ratings
 }
 parameters {
-  simplex[I] alpha;                      // item quality
+  vector[I - 1] eta_pre;               // item quality
   ordered[K - 1] c;                      // cutpoints
 }
+transformed parameters {
+  vector[I] eta = append_row(eta_pre, -sum(eta_pre));
+}
 model {
-  c ~ normal(0, 1);
+  eta ~ normal(0, 5);
+  c ~ normal(0, 5);
   for (r in 1:R) {
-    z[r] ~ ordered_logistic(alpha[u[r]], c);
+    z[r] ~ ordered_logistic(eta[u[r]], c);
   }
 }
