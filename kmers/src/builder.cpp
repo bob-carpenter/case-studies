@@ -10,8 +10,8 @@
 #include <stdexcept>
 #include <vector>
 
-int64_t num_kmers(int64_t K) {
-  int64_t y = 1;
+int32_t num_kmers(int32_t K) {
+  int32_t y = 1;
   for (int k = 0; k < K; ++k) {
     y *= 4;
   }
@@ -126,8 +126,10 @@ struct validator {
 struct counter {
   size_t num_targets_;
   size_t num_bases_;
-  counter() : num_targets_(0), num_bases_(0) { }
+  std::vector<int32_t> isoform_lengths_;
+  counter() : num_targets_(0), num_bases_(0), isoform_lengths_() { }
   void operator()(const std::string id, const std::string& seq) {
+    isoform_lengths_.push_back(seq.size());
     ++num_targets_;
     num_bases_ += seq.size();
     if ((num_targets_ % 10000) == 0)
@@ -141,15 +143,33 @@ struct counter {
     std::cout << "counter.report():  " << num_bases_ << " bases"
 	      << std::endl;
   }
+  void write_isoform_lengths(const std::string& file) {
+    std::fstream out(file, std::ios::out);
+    if (!out) {
+      throw std::runtime_error("could not open output file");
+      return;
+    }
+    try {
+      out << "length" << std::endl;
+      for (int32_t n : isoform_lengths_)
+        out << n << "\n";
+    } catch (...) {
+      std::cout << "error writing to isoform file" << std::endl;
+    }
+    out.close();
+  }
 };
 
 struct triplet_counter {
   int32_t K_;
   int32_t ref_id_;
   std::vector<Eigen::Triplet<float, int32_t>> kmer_count_;
-  triplet_counter(int32_t K) : K_(K), ref_id_(0), kmer_count_() { }
+  triplet_counter(int32_t K) : K_(K), ref_id_(0), kmer_count_() {
+    kmer_count_.reserve(300000000);
+  }
   void operator()(const std::string& id, const std::string& seq) {
     int32_t num_kmers = seq.size() - K_ + 1;
+    if (ref_id_ > 100) return;
     float prob_kmer = 1.0f / num_kmers;
     for (int32_t start = 0; start < num_kmers; ++start) {
       std::string kmer = seq.substr(start, K_);
@@ -204,7 +224,7 @@ int main(int argc, char* argv[]) {
   std::cout << "main:  binary output file = " << binoutfile
             << std::endl;
 
-  std::size_t K = 10;
+  std::size_t K = 8;
   std::cout << "main:  K = " << K
 	    << std::endl;
 
@@ -214,13 +234,21 @@ int main(int argc, char* argv[]) {
 
   // shredder shred_handler = shredder(K);
   // validator validate_handler = validator();
-  counter count_handler = counter();
-  triplet_counter triplet_handler = triplet_counter(K);
 
-  coupler<counter, triplet_counter> handler = couple(count_handler, triplet_handler);
-  fasta::parse_file(fastafile, handler);
-  handler.report();
-  triplet_handler.write_matrix(binoutfile);
+  counter count_handler = counter();
+
+  // triplet_counter triplet_handler = triplet_counter(K);
+  // coupler<counter, triplet_counter> handler = couple(count_handler, triplet_handler);
+
+  fasta::parse_file(fastafile, count_handler);
+
+  std::string file = "human-isoform-lengths-GRCh38.csv";
+  std::cout << "writing isoform lengths to csv file = " << file
+            << std::endl;
+  count_handler.write_isoform_lengths(file);
+
+  // handler.report();
+  // triplet_handler.write_matrix(binoutfile);
 
   std::cout << "main:  FINI." << std::endl;
   return 0;

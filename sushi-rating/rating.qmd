@@ -46,14 +46,20 @@ bibliography: references.bib
 
 ## Python setup {.unnumbered}
 
-We will first load all of the libraries in Python that we will need
+We will first load all of the libraries in Python that we will need.
+The first batch is just to download the data.
 
 ```{python}
 import urllib.request
 import zipfile
 import os
+```
 
-import scipy.stats
+The real work is being done by these packages for simulation and
+plotting. 
+
+```{python}
+import scipy as sp
 import numpy as np
 import pandas as pd
 import cmdstanpy as csp
@@ -86,14 +92,14 @@ types of sushi.  Each rater provided two forms of rating,
 
 For the rank ordering, the head of the rank ordering data file looks like this:
 
-`sushi3b.5000.10.order`
+`sushi3-2016/sushi3b.5000.10.order`
 ```
 100 1
 0 10 58 4 3 44 87 60 67 1 12 74
 0 10 22 31 60 21 8 24 6 12 17 76
 0 10 2 15 13 1 6 25 46 74 56 55
 0 10 8 0 3 9 24 43 4 5 29 40
-0 10 9 47 50 30 4 19 99 55 31 13
+...4996 more lines...
 ```
 
 The first row is just metadata about how many pieces of sushi there
@@ -109,10 +115,11 @@ the data distribution or the paper by @kamishima2003.
 
 For the rating data, there is one row per rater.  A rating of -1 indicates missing data---items not rated.
 
-`sushi3b.5000.10.score`
+`sushi3-2016/sushi3b.5000.10.score`
 ```
 -1 0 -1 4 2 -1 -1 -1 -1 -1 -1 -1 1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 4 -1 2 -1 -1 -1 -1 -1 -1 0 -1 -1 -1 -1 -1 -1 0 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 2 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 -1 -1 -1 -1 -1 -1 0 -1 1 -1 -1 -1 0 -1 -1 -1 -1 0 -1 -1 -1 1 2 -1 0 -1 -1 -1 -1 -1 -1 1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 0 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+...4996 more lines...
 ```
 
 ## Downloading the data {.unnumbered}
@@ -478,6 +485,7 @@ for-each loop, with `y_n in y` iterating over all of the elements of
 
 First, we collect all the data.
 ```{python}
+#| code-fold: true
 df = pd.read_csv('sushi3-2016/sushi3b.5000.10.order',
                      delim_whitespace=True, header=None, skiprows=1)
 df = df.drop(columns=[0, 1])
@@ -502,27 +510,29 @@ using the `sample` method.
 #| output: false
 fit = model.sample(data = data_dict, chains = 1,
                    iter_warmup = 30, iter_sampling = 30,
-                   parallel_chains = 4, show_console = True,
-                   refresh = 20)
+                   parallel_chains = 4)
 ```
 
 In order to inspect the results, we can read in the metadata
 from the supplied file and extract the item names.
 
 ```{python}
+#| code-fold: true
 df_items = pd.read_csv('sushi3-2016/sushi3.idata',
                            delim_whitespace=True, header=None)
 item_names = df_items.iloc[:, 1].values
 ```
 
 The following code reads the English descriptions out of lines 56--155
-of the mostly unstructured file `README-en.txt` where entries look as follows.
+of the mostly unstructured file `README-en.txt`, where entries look as
+follows. 
 
 ```
  0:ebi (shrimp)
 ```
 
 ```{python}
+#| code-fold: true
 desc = []
 with open('sushi3-2016/README-en.txt', 'r') as f:
     for i, line in enumerate(f):
@@ -536,7 +546,7 @@ with open('sushi3-2016/README-en.txt', 'r') as f:
 We then define point estimates of the parameters as posterior means.
 
 ```{python}
-item_scores = [np.mean(fit.stan_variable('beta')[:,i])
+item_scores = [np.mean(fit.stan_variable('beta')[:, i])
                for i in range(100)]
 ```
 
@@ -544,9 +554,9 @@ Then we can put the item names and scores into a data frame, sort by
 value, and print.
 
 ```{python}
+#| code-fold: true
 df_out = pd.DataFrame({'type': item_names, 'score': item_scores, 'desc': desc})
 df_out.sort_values(by='score', ascending=False, inplace=True)
-# df_out.reset_index(drop=True)
 print(f"rank  score   type (description)")
 for index, (_, row) in enumerate(df_out.iterrows()):
     print(f"{(index + 1):4d}  {row['score']:6.4f}  {row['type']}  ({row['desc']})")
@@ -611,7 +621,7 @@ x_values = np.linspace(-8, 10, 200)
 categories = [-2, 0, 4]
 dfs = []
 for cat in categories:
-    y_values = scipy.stats.logistic.pdf(x_values, loc=cat, scale=1)
+    y_values = sp.stats.logistic.pdf(x_values, loc=cat, scale=1)
     temp_df = pd.DataFrame({'x': x_values, 'y': y_values, 'Category': [f"eta = {cat}"] * len(x_values)})
     dfs.append(temp_df)
 final_df = pd.concat(dfs, ignore_index=True)
@@ -644,10 +654,320 @@ $$
 = \textrm{OrderedLogistic}(k \mid \eta + d, c + d),
 $$
 where $d \in \mathbb{R}$.  We can deal with this non-identifiabilty by
-constraining the qualities to sum to zero.  We will do this by
-enforcing the constraint that
+constraining the quality parameter vector to sum to zero.  We will do
+this by taking free parameters $\eta_1, \ldots, \eta_{I-1}$ and defining
 $$
 \eta_I = -\sum_{i = 1}^{I - 1} \eta_i.
 $$
 
+## Coding ordinal logistic in Stan
 
+Stan has a buil-in distribution `ordered_logistic`, whose probability
+density function was defined above.
+
+```{.stan include="ordinal-logit.stan" filename="ordinal-logit.stan"}
+```
+
+We code the $K - 1$ cutpoints using Stan's data type `ordered`, which
+constrains the vector `c` to have $K - 1$ entries in ascending order
+(in the sushi example, $K = 5$ because ratings are on an ordinal 1--5
+scale.  
+
+The item quality values are declared as the parameter vector `eta_pre`
+(the "pre" being for prefix).  We then construct the entire vector
+`eta` as a transformed paraemter by appending the negative sum of the
+first $K - 1$ entries as the $I$-th entry.
+
+Both the cutpoints and the quality values are centered at zero and
+given weakly informative priors on the logistic scale.  We chose the
+scale of 3 for these priors because they are weakly informative on the
+scale of the values.  At two standard deviations out from the mean,
+we see that we have fairly wide bounds on the inverse logit scale we
+are using for the parameters (which is called `expit` in Scipy).
+
+```{python}
+q05 = sp.special.expit(-6)
+q95 = sp.special.expit(6)
+print(f" 5% quantile = inv_logit(-6) = {q05:5.3f}")
+print(f"95% quantile = inv_logit( 6) = {q95:5.3f}")
+```
+
+## Exploring the constrained prior
+
+Because of the ordering constraint on the cutpoint parameter `c`
+and the sum-to-zero constraint on `eta`, the elements are not
+independent and their priors will not be $\textrm{normal}(0, 3)$.
+
+Analytical exploration would requiring manipulating multidimensional
+changes of variables (see the *Stan Reference Manual* section on
+constrained variables from the @stan2023).  Instead, we will explore
+the behavior by running a simple Stan model with only the
+prior (we could have also run the full model with size zero data).
+
+```{.stan include="ordinal-logit-prior.stan" filename="ordinal-logit-prior.stan"}
+```
+
+In both cases, we have defined the prior directly on the constrained
+parameter values.
+
+
+### Sum-to-zero prior
+
+First, let's look at the quality values `eta`, which are constrained to
+sum to zero.  With this constraint, there are only $I - 1$ parameters
+required to produce an $I$-vector that sums to zero (i.e., we have one
+fewer degrees of freedom than the vector size so that the parameter
+is of intrinsic dimensionality $I - 1$ in the topological sense).
+
+```{python}
+#| output: false
+model_ppc = csp.CmdStanModel(stan_file = 'ordinal-logit-prior.stan')
+fit_ppc = model_ppc.sample(data = {'I': 8, 'K': 5}, chains = 1,
+                           iter_warmup = 500, iter_sampling = 10000)
+```
+
+We can then extract the summary (which is a pandas table) to get a
+sense of whether the model fit.
+
+```{python}
+summary = fit_ppc.summary(percentiles=(5, 95), sig_figs=2)
+print(summary)
+```
+
+Not surprisingly, the R-hat values are all near 1 and the effective
+sample sizes are greater than the number of iterations (as often
+arises with Hamiltonian Monte Carlo applied to simple target
+densities).  Now let's look directly at all of the eta variables and
+their standard deviations.
+
+
+```{python}
+draws = fit_ppc.stan_variable('eta')
+for i in range(8):
+  print(f"mean(eta[{i + 1}]) = {np.mean(draws[:, i]): 4.2f}   sd(eta[{i + 1}]) = {np.std(draws[:, i]): 3.1f}")
+```
+
+This shows the sum-to-zero constraint leaves a symmetric prior on the
+elements.  With $I = 8$, we have a noticeable reduction in scale
+from 3 to 2.8 (from the standard deviation).  With $I = 100,$ this
+reduction is barely noticeable.
+
+It is *not* equivalent to put the prior on `eta_pre`.  In that
+situation, the prior is no longer symmetric on `eta`.  The elememts of
+`eta` will still be centered around zero, but the prior scale on
+$\eta_1$ to $\eta_7$ will be 3 (instead of being reduced) and the
+prior variance on $\eta_8$ will be seven times the prior variance of
+$\eta_1$ through $\eta_7$ because it's the sum of seven independent
+normals (the variance of the sum of a sequence of random variables is
+the sum of their variances and sign flip doesn't matter due to
+symmetry), so that it's scale will be inflated by a factor of
+$\sqrt{7}$.  And clearly the problem gets worse as $I$ increases.
+
+
+### Ordered cutpoint prior
+
+We have constrained our cutpoint vector `c` to be ordered, which
+implies it will be in ascending order, with `c[1]` the smallest
+element and `c[K - 1]` the largest. Let's see what those parameter
+means and standard deviations look like.
+
+```{python}
+draws = fit_ppc.stan_variable('c')
+for k in range(4):
+  print(f"mean(c[{k + 1}]) = {np.mean(draws[:, k]): 4.2f}   sd(c[{k + 1}]) = {np.std(draws[:, k]): 3.1f}")
+```
+
+Like the sum-to-zero case, we know that the elements of the ordered
+vector `c` are not independent because of the constraint.  Unlike the
+sum-to-zero case, the marginal distribution of each element is not
+identical.  The prior mean for $c_1$ is roughly -3 and that of $c_2$
+roughly -0.9.  The prior means are in ascending order like the
+values.  The standard deviations are higher for the first ($c_1$) and
+last ($c_4$) elements, which makes sense because the boundary elements
+are only constrained on one side whereas the other elements are
+constrained on both sides.
+
+The ordered cutpoint prior is equivalent to what we would get from
+taking independent $\textrm{normal}(0, 3)$ draws and sorting them.
+
+```{python}
+draws = np.random.normal(loc=0, scale=3, size=(10000, 4))
+draws.sort(axis=1)
+means = np.mean(draws, axis=0)
+sds = np.std(draws, axis=0)
+for k in range(4):
+  print(f"mean(c[{k + 1}]) = {means[k]: 4.2f}   sd(c[{k + 1}]) = {sds[k]: 3.1f}")
+```
+
+In statistics, the sorted values are known as *order statistics* (any
+old function of a random variable is called a "statistic").  They have
+the same mean and stadard deviation as we get in Stan with a prior on
+ordered parameters.
+
+Although the means are quite spread out with this prior, the standard
+deviation of each parameter in the prior is quite high.  For example,
+the 95% interval of $c_1$ is roughly $(-7, 4)$.
+
+
+### Preventing category collapse
+
+Given our application as a set of cutpoints, if we wind up with
+cutpoints very close together, the category represented by the pair
+will have vanishingly small probability.  Let's see what the prior
+distribution is on the gaps between cutpoints:
+
+```{python}
+#| code-fold: true
+import pandas as pd
+from plotnine import ggplot, aes, geom_histogram, facet_wrap
+diffs = np.diff(draws, axis=1)
+df = pd.DataFrame(diffs, columns=['c[2] - c[1]', 'c[3] - c[2]', 'c[4] - c[3]'])
+df_melted = df.melt(value_name='difference', var_name='k')
+plot = (pn.ggplot(df_melted, pn.aes(x='difference'))
+        + pn.geom_histogram(color="white", breaks = np.arange(0, 10.5, 0.5), size=0.1, boundary=0)
+        + pn.coord_cartesian(xlim = (0, 10))
+        + pn.facet_wrap('~ k', ncol=3)
+        + pn.theme(panel_spacing=0.025, figure_size = (8, 8/3)))
+print(plot)
+```
+
+This is not ideal in that there is substantial probability mass pushed
+up against the boundaries and the distribution over the differences is
+not identical for the edge and middle differences (like the prior
+itself).  This will not be a concern for the sushi data that we have,
+which has examples of all categories and thus will avoid category
+collapse.  
+
+A *zero-avoiding prior* on the space between the cutpoints such as $c_k
+- c_{k - 1} \sim \textrm{lognormal}(0, 1)$ could be used to avoid collapse
+where $c_k = c_{k-1}$ (which cannot happen in theory, but can in
+practice due to limited precision floating point arithmetic).  The
+lognormal has support on positive real numbers and it is 
+*zero-avoiding* in the sense that
+$$
+\lim_{x \rightarrow 0} \textrm{lognormal}(x | 0, \sigma) = 0.
+$$
+Contrast this with $\textrm{exponential}(x | \lambda),$ which also has
+support on positive real numbers, but where the limit
+is $\infty$ (i.e., the origin is a pole).
+
+This prior on the width between the cutpoints is incomplete as it
+doesn't constrain the location of the variables (it only constrains $K - 2$
+degrees of fredom of our ordered $K - 1$ vector).  In other words,
+it's improper in the sense that the integral over the space of values
+isn't finite.  
+
+The prior on cutpoint distance can be completed in an interpretable
+way with an overall prior on the sum of the cutpoints to center them,
+such as $\textrm{sum}(c) \sim \textrm{normal}(0, \epsilon)$ for some
+suitably small $\epsilon$ (e.g., $\epsilon = 0.005$).  No Jacobian
+adjustment is needed because summation is linear and we don't need to
+include constant terms for Stan's Hamiltonian Monte Carlo samplers.
+
+In Stan, this collapse-avoiding prior is easy to code as
+
+```{stan}
+  c[2:K] - c[1:K-1] ~ lognormal(0, 1);
+  sum(c) ~ normal(0, 0.005);
+```  
+
+In this case study, we will stick to the simpler order-statistic
+prior.
+
+
+
+### Prior predctive checks
+
+Had we gone one step further and generated data from simulated priors,
+we would have what is known as a *prior predictive check* (see, e.g.,
+@gabry2019 or @gelman2020, for examples).  Here, the connection between data and the
+parameter values is close enough it feels sufficient to investigate
+only the prior.
+
+
+## Fitting the model
+
+Before fitting the model, we have to extract the data into two
+parallel 2-dimensional arrays, one with indexes of the pieces being
+rated, and one with the ratings.  
+
+```{python}
+#| code-fold: true
+indexes_list = []
+values_list = []
+with open("sushi3-2016/sushi3b.5000.10.score", "r") as f:
+    for line in f:
+        arr = np.fromstring(line.strip(), dtype=int, sep=' ')
+        idx = np.where(arr != -1)[0]
+        vals = arr[idx]
+        indexes_list.append(idx)
+        values_list.append(vals)
+sushi_types = np.array(indexes_list) + 1
+ratings = np.array(values_list) + 1
+```
+
+We can print the first few rows of the data we extracted, which
+consist of the sushi types and the ratings.
+
+```{python}
+print(f"sushi_types (first three raters):\n{sushi_types[range(3), :]}\n")
+print(f"ratings (first three raters):\n{ratings[range(3), :]}")
+```
+
+Each row corresponds to a rater, with alignment between the two
+arrays.  These tables say the first rater assigned sushi type 1 a
+rating of 1 (the lowest), sushi type 3 a rating of 5 (the highest),
+sushi type 4 a rating of 3, sushi type 12 a rating of 2, and so on.
+The third rater gave sush type 1 a rating of 4, sushi type 2 a rating
+of 5 and sushi type 6 a rating of 4, and so on.  This is quite
+different than the ratings provided by the first two rateers for sushi
+types 1 and 6, and overall the third rater provided higher ratings.
+
+One way to adjust for differences in average rating among raters would
+be to adjust the overall position of the logistic curve up or down
+based on the average score---we will not try this kind of adjustment
+here.  This is one of the advantages of ranked data over rated
+data---the rating scale is rarely understood in the same way by all of
+the raters. This will, of course, show up in the posterior uncertainty
+of the ratings.  If the raters are more consistent, the posteriors
+will be sharper (i.e., less variable).
+
+Let's fit the model now that we have the data.
+
+```{python}
+model_rating = csp.CmdStanModel(stan_file = 'ordinal-logit.stan')
+data_dict = {'I': 100, 'K': 10, 'R': 5000, 'J': 5, 'u': sushi_types, 'z': ratings }
+fit_rating = model_rating.sample(data = data_dict, chains = 1, 
+                                 iter_warmup = 200, iter_sampling = 200)
+print(fit_rating.summary())			   
+```
+
+Now let's see what the consensus sushi rating looks like under the
+ordinal logistic model.
+
+```{python}
+item_scores_rating = [np.mean(fit_rating.stan_variable('eta')[:, i])
+                      for i in range(100)]
+```
+
+and print them.
+
+```{python}
+#| code-fold: true
+item_names = df_items.iloc[:, 1].values
+
+desc = []
+with open('sushi3-2016/README-en.txt', 'r') as f:
+    for i, line in enumerate(f):
+        if i < 55: continue
+        if i >= 155: break
+        paren_start = line.find('(') + 1
+        paren_end = line.find(')')
+        desc.append(line[paren_start:paren_end])
+
+df_out_rating = pd.DataFrame({'type': item_names, 'score': item_scores_rating, 'desc': desc})
+df_out_rating.sort_values(by='score', ascending=False, inplace=True)
+print(f"rank  score   type (description)")
+for index, (_, row) in enumerate(df_out_rating.iterrows()):
+    print(f"{(index + 1):4d}  {row['score']:6.4f}  {row['type']}  ({row['desc']})")
+```
