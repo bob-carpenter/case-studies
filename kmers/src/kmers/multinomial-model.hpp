@@ -23,7 +23,7 @@ Eigen::VectorXf softmax(const Eigen::VectorXf& alpha) {
   using std::exp;
   auto delta = Eigen::VectorXf::Constant(alpha.size(), alpha.maxCoeff());
   Eigen::VectorXf phi = (alpha - delta).array().exp();
-  return delta + phi / phi.sum();
+  return phi / phi.sum();
 }
 
 /**
@@ -52,21 +52,38 @@ struct multinomial_model {
       const Eigen::Map<Eigen::SparseMatrix<float, Eigen::RowMajor>>& xt,
       const Eigen::VectorXf& y)
       : xt_(xt), y_(y) {
-    if (xt.cols() != y.rows()) {
+    if (xt.rows() != y.rows()) {
        throw std::runtime_error("xt rows must equal y cols");
     }
   }
 
   float log_density(const Eigen::VectorXf& beta) {
     Eigen::VectorXf theta = softmax(beta);
-    std::cout << "beta.size() = " << beta.size()
-              << "; theta.size() = " << theta.size()
-              << std::endl;
+
     std::cout << "model:  xt_.rows() = " << xt_.rows() << std::endl;
     std::cout << "model:  xt_.cols() = " << xt_.cols() << std::endl;
-    // Eigen::VectorXf xt_sm_a =  (xt_ * theta).array().log();
-    float log_likelihood = 0;
-    // float log_likelihood = y_.transpose() * xt_sm_a;
+    std::cout << "model:  theta.rows() = " << theta.rows() << std::endl;
+    std::cout << "model:  theta.cols() = " << theta.cols()
+              << std::endl;
+    std::cout << "model:  theta.sum() = " << theta.sum() << std::endl;
+
+    Eigen::VectorXf xt_theta =  1e-6 * Eigen::VectorXf::Ones(xt_.rows())
+        + (1 - 1e-6) * (xt_ * theta);
+
+    std::cout << "model:: xt_theta.sum() = " << xt_theta.sum() << std::endl;
+
+    Eigen::VectorXf log_xt_theta = xt_theta.array().log();
+    for (int i = 0; i < log_xt_theta.size(); ++i)
+      if (!(log_xt_theta(i) < 0))
+        std::cout << "UH log_xt_theta(" << i << ") = " << log_xt_theta(i)
+                  << std::endl;
+
+    std::cout << "model:  log_xt_theta.rows() = " << log_xt_theta.rows()
+              << std::endl;
+    std::cout << "model:  log_xt_theta.cols() = " << log_xt_theta.cols()
+              << std::endl;
+
+    float log_likelihood = y_.transpose() * log_xt_theta;
     float log_prior = -0.125 * beta.transpose() * beta;
     return log_likelihood + log_prior;
   }

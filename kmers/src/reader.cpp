@@ -40,15 +40,25 @@ read_xt(const std::string& filename) {
             << std::endl;
 
   std::vector<int> outerIndexPtr = read_array<int>(in, rows + 1);
+  for (size_t i = 0; i < outerIndexPtr.size(); ++i) {
+    if (outerIndexPtr[i] > nnz || outerIndexPtr[i] < 0) {
+      throw std::runtime_error("OOPS: outerIndexPtr out of range");
+    }
+  }
   std::cout << "reader:  read outerIndexPtr"
             << std::endl;
 
   std::vector<int> innerIndices = read_array<int>(in, nnz);
+  for (size_t i = 0; i < innerIndices.size(); ++i) {
+    if (innerIndices[i] < 0 || innerIndices[i] >= cols) {
+      throw std::runtime_error("innerIndices exceeded cols");
+    }
+  }
   std::cout << "reader:  read innerIndices"
             << std::endl;
 
   std::vector<float> values = read_array<float>(in, nnz);
-  std::cout << "reader: read innerIndices"
+  std::cout << "reader:  read values"
             << std::endl;
 
   in.close();
@@ -86,14 +96,19 @@ int main(int argc, char* argv[]) {
   std::cout << "reader:  building multinomial model"
             << std::endl;
 
-  Eigen::VectorXf y = Eigen::VectorXf::Ones(xt.cols());
+  for (int32_t i = 0; i < 10; ++i)
+    for (int32_t j = 0; j < 10; ++j)
+      std::cout << "xt[" << i << ", " << j << "] = " << xt.coeffRef(i, j)
+                << std::endl;
+
+  Eigen::VectorXf y = Eigen::VectorXf::Ones(xt.rows());
   std::cout << "reader: y.rows() = " << y.rows()
             << std::endl;
   multinomial_model model(xt, y);
   std::cout << "reader: model.y_.size() = " << model.y_.size()
             << std::endl;
 
-  Eigen::VectorXf beta = Eigen::VectorXf::Ones(xt.rows());
-  float lp = model.log_density(beta);
-  std::cout << "lp = " << lp << std::endl;
+  // Eigen::VectorXf beta = Eigen::VectorXf::Ones(xt.cols());
+  // float lp = model.log_density(beta);
+  // std::cout << "lp = " << lp << std::endl;
 }
