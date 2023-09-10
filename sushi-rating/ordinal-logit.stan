@@ -2,8 +2,9 @@ data {
   int<lower=1> I;                        // # items
   int<lower=1> K;                        // # items per rater
   int<lower=0> R;                        // # raters
+  int<lower=0> J;                        // maximum rating
   array[R, K] int<lower=1, upper=I> u;   // items rated
-  array[R, K] int<lower=1, upper=K> z;   // ordinal ratings
+  array[R, K] int<lower=1, upper=J> z;   // ordinal ratings
 }
 parameters {
   ordered[K - 1] c;                      // cutpoints
