@@ -509,7 +509,7 @@ using the `sample` method.
 ```{python}
 #| output: false
 fit = model.sample(data = data_dict, chains = 1,
-                   iter_warmup = 30, iter_sampling = 30,
+                   iter_warmup = 5, iter_sampling = 5,
                    parallel_chains = 4)
 ```
 
@@ -723,7 +723,8 @@ is of intrinsic dimensionality $I - 1$ in the topological sense).
 #| output: false
 model_ppc = csp.CmdStanModel(stan_file = 'ordinal-logit-prior.stan')
 fit_ppc = model_ppc.sample(data = {'I': 8, 'K': 5}, chains = 1,
-                           iter_warmup = 500, iter_sampling = 10000)
+                           iter_warmup = 5, iter_sampling = 5,
+			   parallel_chains = 4)
 ```
 
 We can then extract the summary (which is a pandas table) to get a
@@ -935,10 +936,15 @@ will be sharper (i.e., less variable).
 Let's fit the model now that we have the data.
 
 ```{python}
+#| output: false
 model_rating = csp.CmdStanModel(stan_file = 'ordinal-logit.stan')
 data_dict = {'I': 100, 'K': 10, 'R': 5000, 'J': 5, 'u': sushi_types, 'z': ratings }
 fit_rating = model_rating.sample(data = data_dict, chains = 1, 
-                                 iter_warmup = 200, iter_sampling = 200)
+                                 iter_warmup = 5, iter_sampling = 5,
+				 parallel_chains = 4)
+```
+
+```{python}
 print(fit_rating.summary())			   
 ```
 
@@ -954,20 +960,93 @@ and print them.
 
 ```{python}
 #| code-fold: true
-item_names = df_items.iloc[:, 1].values
+# item_names = df_items.iloc[:, 1].values
 
-desc = []
-with open('sushi3-2016/README-en.txt', 'r') as f:
-    for i, line in enumerate(f):
-        if i < 55: continue
-        if i >= 155: break
-        paren_start = line.find('(') + 1
-        paren_end = line.find(')')
-        desc.append(line[paren_start:paren_end])
+# desc = []
+# with open('sushi3-2016/README-en.txt', 'r') as f:
+#     for i, line in enumerate(f):
+#        if i < 55: continue
+#        if i >= 155: break
+#        paren_start = line.find('(') + 1
+#        paren_end = line.find(')')
+#        desc.append(line[paren_start:paren_end])
 
 df_out_rating = pd.DataFrame({'type': item_names, 'score': item_scores_rating, 'desc': desc})
 df_out_rating.sort_values(by='score', ascending=False, inplace=True)
 print(f"rank  score   type (description)")
 for index, (_, row) in enumerate(df_out_rating.iterrows()):
     print(f"{(index + 1):4d}  {row['score']:6.4f}  {row['type']}  ({row['desc']})")
+```
+
+# Combining rating and ranking models
+
+## Comparing estimates between models
+
+### Ranking vs. rating
+
+Now that we have two sets of coefficient estimates, let's scatter plot
+them to see how their scales compare and whether the relationship is
+roughly monotonic.
+
+```{python}
+#| code-fold: true
+scatter_df = pd.DataFrame({
+    'ranking': item_scores,
+    'rating': item_scores_rating
+})
+plot = (pn.ggplot(scatter_df, pn.aes(x='ranking', y='rating'))
+     + pn.geom_point()
+     + pn.labs(x='ranking', y='rating'))
+print(plot)
+```
+
+### Log ranking vs. rating
+
+We can log transform the positively constrained ranking parameters by
+taking their log and look at the resulting plot.
+
+```{python}
+#| code-fold: true
+log_scatter_df = pd.DataFrame({
+    'log_ranking': np.log(item_scores),
+    'rating': item_scores_rating
+})
+log_plot = (pn.ggplot(log_scatter_df,
+                      pn.aes(x='log_ranking', y='rating'))
+       + pn.geom_point()
+       + pn.labs(x='log ranking (beta)', y='rating (eta)'))
+print(log_plot)
+```
+
+The two extreme high values are toro and chu toro.  The low value is
+sea cucumber.
+
+
+## Combining models
+
+One way to combine the models is to assume the rating score is a
+linear function of the log ranking,
+$$
+\eta_i = \alpha_0 + \alpha_1 \cdot \log \beta_i
+$$
+Doing this forces the parameters of the model to have this log-linear
+relationship and allows us to fit essentially one set of parameters.
+This describes the relationship between the estimates to within the
+variation between the two estimates---no monotonic function will make
+them line up exactly.
+
+```{python}
+#| output: false
+model_combo = csp.CmdStanModel(stan_file = 'rating-ranking.stan')
+data_dict_combo = {'I': 100, 'K': 10, 'R': 5000, 'J': 5,
+                   'y': rev_row_y, 'u': sushi_types, 'z': ratings }
+fit_combo = model_combo.sample(data = data_dict_combo, chains = 1, 
+                               iter_warmup = 100, iter_sampling = 100,
+			       parallel_chains = 4, show_console=True)
+```
+
+And now we can look at a summary of the fit.
+
+```{python}
+print(fit_combo.summary())			   
 ```

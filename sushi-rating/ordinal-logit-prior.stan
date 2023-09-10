@@ -1,10 +1,6 @@
 data {
   int<lower=1> I;                        // # items
   int<lower=1> K;                        // # items per rater
-  int<lower=0> R;                        // # raters
-  int<lower=0> J;                        // maximum rating
-  array[R, K] int<lower=1, upper=I> u;   // items rated
-  array[R, K] int<lower=1, upper=J> z;   // ordinal ratings
 }
 parameters {
   ordered[K - 1] c;                      // cutpoints
@@ -14,9 +10,6 @@ transformed parameters {
   vector[I] eta = append_row(eta_pre, -sum(eta_pre));
 }
 model {
-  eta ~ normal(0, 3);
+  eta_pre ~ normal(0, 3);
   c ~ normal(0, 3);
-  for (r in 1:R) {
-    z[r] ~ ordered_logistic(eta[u[r]], c);
-  }
 }

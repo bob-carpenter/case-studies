@@ -5,4 +5,5 @@ rating.pdf: rating.qmd *.stan
 	quarto render rating.qmd --to pdf
 
 clean:
-	rm -f plackett-luce.hpp plackett-luce rating.html rating.pdf
+	rm -f rating.ipynb plackett-luce.hpp plackett-luce rating.html rating.pdf ordinal-logit.hpp ordinal-logit ordinal-logit-prior.hpp ordinal-logit-prior rating-ranking.hpp rating-ranking
+
