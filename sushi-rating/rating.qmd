@@ -64,8 +64,32 @@ import numpy as np
 import pandas as pd
 import cmdstanpy as csp
 import plotnine as pn
+
+# don't wrap table output
+pd.set_option('display.width', None)
+pd.set_option('display.max_colwidth', None)
+
+# drop MC standard error (col 1) and ESS/second (col 6)
+def short_summary(fit):
+   summary = fit.summary(percentiles=(5, 95), sig_figs=2)
+   return summary.iloc[:, [0, 2, 3, 4, 5, 7]]
 ```
 
+We've set this case study up to have a `DRAFT` setting with a single
+short chain and a non-`DRAFT` setting with 4 chains and 500
+post-warmup iterations per chain (2000 posterior draws).
+
+```{python}
+DRAFT = False
+if DRAFT:
+    iter_warmup = 100
+    iter_sampling = 100
+    chains = 2
+else:
+    iter_warmup = 500
+    iter_sampling = 500
+    chains = 4
+```
 
 # Introduction
 
@@ -497,7 +521,6 @@ data_dict = {'I': 100, 'R': 5000, 'K': 10, 'y': rev_row_y }
 ```
 
 Then we compile the model.
-
 ```{python}
 #| output: false
 model = csp.CmdStanModel(stan_file = 'plackett-luce.stan')
@@ -505,13 +528,33 @@ model = csp.CmdStanModel(stan_file = 'plackett-luce.stan')
 
 The model defines the posterior density, from which we can sample
 using the `sample` method.
-
 ```{python}
 #| output: false
-fit = model.sample(data = data_dict, chains = 1,
-                   iter_warmup = 5, iter_sampling = 5,
-                   parallel_chains = 4)
+fit = model.sample(data = data_dict, chains = chains,
+                   iter_warmup = iter_warmup, iter_sampling = iter_sampling,
+                   parallel_chains = chains)
 ```
+
+We can inspect a summary of the output to see if we have convergence
+and a large enough effective sample size estimate.  
+
+```{python}
+print(short_summary(fit))
+```
+
+Only the first few and last few rows of `beta` are displayed.  The
+variable `lp__` is for the (unnormalized) log density.  As a
+non-linear function of all the other parameters, it can be slower to
+mix.  The columns for the Monte Carlo standard error and the effective
+sample size per second have been supressed using the `short_summary`
+function and the quantiles provide the bounds of the central 90%
+interval (5% and 95% quantiles).
+
+We can see that all of the $\widehat{R}$ values are near 1 and all of
+the effective sample sizes are greater than 100, which is consistent
+with convergence.  If we wanted to further validate our sampler's
+soundness, we would run simulation-based calibration (SBC) as
+recommended by @gelman2020 and described by @talts2018.
 
 In order to inspect the results, we can read in the metadata
 from the supplied file and extract the item names.
@@ -722,17 +765,17 @@ is of intrinsic dimensionality $I - 1$ in the topological sense).
 ```{python}
 #| output: false
 model_ppc = csp.CmdStanModel(stan_file = 'ordinal-logit-prior.stan')
-fit_ppc = model_ppc.sample(data = {'I': 8, 'K': 5}, chains = 1,
-                           iter_warmup = 5, iter_sampling = 5,
-			   parallel_chains = 4)
+fit_ppc = model_ppc.sample(data = {'I': 8, 'K': 5}, chains = chains,
+                           iter_warmup = iter_warmup,
+			   iter_sampling = iter_sampling,
+			   parallel_chains = chains)
 ```
 
 We can then extract the summary (which is a pandas table) to get a
 sense of whether the model fit.
 
 ```{python}
-summary = fit_ppc.summary(percentiles=(5, 95), sig_figs=2)
-print(summary)
+print(short_summary(fit_ppc))
 ```
 
 Not surprisingly, the R-hat values are all near 1 and the effective
@@ -939,13 +982,14 @@ Let's fit the model now that we have the data.
 #| output: false
 model_rating = csp.CmdStanModel(stan_file = 'ordinal-logit.stan')
 data_dict = {'I': 100, 'K': 10, 'R': 5000, 'J': 5, 'u': sushi_types, 'z': ratings }
-fit_rating = model_rating.sample(data = data_dict, chains = 1, 
-                                 iter_warmup = 5, iter_sampling = 5,
-				 parallel_chains = 4)
+fit_rating = model_rating.sample(data = data_dict, chains = chains, 
+                                 iter_warmup = iter_warmup,
+				 iter_sampling = iter_sampling,
+				 parallel_chains = chains)
 ```
 
 ```{python}
-print(fit_rating.summary())			   
+print(short_summary(fit_rating))
 ```
 
 Now let's see what the consensus sushi rating looks like under the
@@ -960,17 +1004,6 @@ and print them.
 
 ```{python}
 #| code-fold: true
-# item_names = df_items.iloc[:, 1].values
-
-# desc = []
-# with open('sushi3-2016/README-en.txt', 'r') as f:
-#     for i, line in enumerate(f):
-#        if i < 55: continue
-#        if i >= 155: break
-#        paren_start = line.find('(') + 1
-#        paren_end = line.find(')')
-#        desc.append(line[paren_start:paren_end])
-
 df_out_rating = pd.DataFrame({'type': item_names, 'score': item_scores_rating, 'desc': desc})
 df_out_rating.sort_values(by='score', ascending=False, inplace=True)
 print(f"rank  score   type (description)")
@@ -1040,13 +1073,32 @@ them line up exactly.
 model_combo = csp.CmdStanModel(stan_file = 'rating-ranking.stan')
 data_dict_combo = {'I': 100, 'K': 10, 'R': 5000, 'J': 5,
                    'y': rev_row_y, 'u': sushi_types, 'z': ratings }
-fit_combo = model_combo.sample(data = data_dict_combo, chains = 1, 
-                               iter_warmup = 100, iter_sampling = 100,
-			       parallel_chains = 4, show_console=True)
+fit_combo = model_combo.sample(data = data_dict_combo, chains = chains, 
+                               iter_warmup = iter_warmup,
+			       iter_sampling = iter_sampling,
+			       parallel_chains = chains)
 ```
 
 And now we can look at a summary of the fit.
 
 ```{python}
-print(fit_combo.summary())			   
+print(short_summary(fit_combo))
+```
+
+We can generate the rating estimates as posterior means.
+
+```{python}
+item_scores_rating_combo = [np.mean(fit_combo.stan_variable('beta')[:, i])
+                            for i in range(100)]
+```
+
+And we can print the outputs as before
+
+```{python}
+#| code-fold: true
+df_out_rating = pd.DataFrame({'type': item_names, 'score': item_scores_rating_combo, 'desc': desc})
+df_out_rating.sort_values(by='score', ascending=False, inplace=True)
+print(f"rank  score   type (description)")
+for index, (_, row) in enumerate(df_out_rating.iterrows()):
+    print(f"{(index + 1):4d}  {row['score']:6.4f}  {row['type']}  ({row['desc']})")
 ```
