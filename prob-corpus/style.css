@@ -1,0 +1,15 @@
+a {
+    color: midnightblue;
+    text-decoration: none;
+}
+a:hover {
+    color: midnightblue;
+    text-decoration: underline;
+}
+code, pre {
+    color: black;
+    font-size: 0.875em; /* Adjust this value to your preference */
+}
+pre {
+    background-color: white;
+}

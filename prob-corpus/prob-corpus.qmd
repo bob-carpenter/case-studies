@@ -1,0 +1,129 @@
+---
+title: "Training a classifier with a probabilistic data set:"
+subtitle: "Discrete and weighted training with Bayes and maximum likelihood"
+author: "Bob Carpenter"
+date: "last-modified"
+jupyter: python3
+filters:
+    - include-code-files
+format:
+  html:
+    theme: cosmo
+    css: style.css
+    highlight-style: atom-one
+    mainfont: Palatino
+    fontcolor: black
+    monobackgroundcolor: white
+    monofont: "Menlo, Lucida Console, Liberation Mono, DejaVu Sans Mono, Bitstream Vera Sans Mono, Courier New, monospace"
+    fontsize: 13pt
+    linestretch: 1.4
+    number-sections: true
+    number-depth: 2
+    toc: true
+    toc-location: right
+    cap-location: bottom
+    format-links: false
+    embed-resources: true
+    anchor-sections: true
+  pdf:
+    include-in-header:
+      - file: header.tex
+    mainfont: Palatino
+    number-sections: true
+    number-depth: 2
+    margin-bottom: 1in
+    fig-pos: "t!"
+    biblio-title: "References"
+    biblio-style: natbib
+    link-citations: true
+    link-bibliography: true
+    pdf-engine: xelatex
+    highlight-style: github
+bibliography: references.bib
+---
+
+#### Python setup {.unnumbered}
+
+We will first load all of the libraries in Python that we will need.
+
+```{python}
+#| code-fold: true
+import numpy as np
+import pandas as pd
+import cmdstanpy as csp
+import plotnine as pn
+
+# don't wrap table output
+pd.set_option('display.width', None)
+pd.set_option('display.max_colwidth', None)
+
+# drop MC standard error (col 1) and ESS/second (col 6)
+def short_summary(fit):
+   summary = fit.summary(percentiles=(5, 95), sig_figs=2)
+   return summary.iloc[:, [0, 2, 3, 4, 5, 7]]
+```
+
+# Introduction
+
+In this short technical note, I will consider several approaches to
+training a binary classifier in the situation where the probability of
+each item's outcome is known. The motivating example is the
+probability assigned by a model of data rating (also known as coding,
+annotation, labeling, and crowdsourcing) such as that of @dawid1979.
+With a model of annotation, we only have noisy estimates of the true
+probabilities, so I consider measurement error in the probability estimates.
+
+The primary result I would like to highlight is that if you have
+probabilistic information, it is best to use those probabilities to
+train.  Best here means best at recovering true parameter values, and
+hence best at prediction.  Training using probabilities means either
+using logistic regression software that allows training with
+probabilistically weighted outcomes or we can exploit the structure of
+logistic regression and use the log odds of the probabilities to train
+a linear regression.  The next best approach is to follow the
+generative model and sample the outcomes given the probabilities and
+train a non-probabilistic regression model using that data.  The worst
+approach, by far, is the typical approach to crowdsourced data in
+machine learning, which is to use unadjusted majority vote or by
+choosing the ``best'' outcome in a probabilistic model.
+
+I will evaluate these approaches to corpus construction and training
+using both maximum likelihood and Bayesian posterior inference.  The
+data is simulated so that we can benchmark error versus true parameter
+values.
+
+
+# Logistic regression
+
+Logistic regression applies in the situation where there are $N$
+binary observations $y_n \in \{ 0, 1 \}$ and each observation
+comes with a (row) vector $x_n \in \mathbb{R}^D$ of covariates (also called
+features or predictors).  Logistic regression is a generalized linear
+model, with a parameter vector $\beta \in \mathbb{R}^D$ of
+regression coefficients (also called weights), the link function is
+log odds (also known as logit), and the family is binomial, so the
+sampling distribution is
+$$
+Y_n \sim \textrm{binomial}(\textrm{logit}^{-1}(x_n \cdot \beta)),
+$$
+where $\textrm{logit}:(0, 1) \rightarrow \mathbb{R}$ and its inverse
+$\textrm{logit}^{-1}:\mathbb{R} \rightarrow (0, 1)$ are defined by
+$$
+\textrm{logit}(u) = \log \frac{u}{1 - u}
+\qquad
+\textrm{logit}^{-1}(v) = \frac{1}{1 + \exp(-v)}.
+$$
+In a Bayesian context, we will consider the prior
+$$
+\beta_n \sim \textrm{normal}(0, 1).
+$$
+In a frequentist setting, we will consider the penalty function
+$$
+
+
+
+
+
+# Parameter estimation
+
+There are two standard ways to estimate parameters.
