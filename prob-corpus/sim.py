@@ -14,7 +14,11 @@ def rw_cov_matrix(D, rho):
 def predictors(N, D, rho):
     Sigma = rw_cov_matrix(D, rho)
     mu = np.zeros(D)
-    return np.random.multivariate_normal(mu, Sigma, N)
+    x = np.random.multivariate_normal(mu, Sigma, N)
+    print(f"{np.shape(x) = }")
+    for n in range(N):
+        x[n, 1] = 1.0  # intercept
+    return x        
 
 def sq_error(u, v):
     return sum((u - v)**2)
@@ -31,7 +35,7 @@ def inv_logit(x):
     return 1 / (1 + exp(-x))
 
 D = 20
-N = 100
+N = 500
 rho = 0.9
 
 model_logistic = csp.CmdStanModel(stan_file = "logistic-regression.stan")
@@ -95,8 +99,9 @@ for rep in range(M):
     sq_error_mle_weights = sq_error(mle_weights, beta)
     sq_error_mle_noisy = sq_error(mle_noisy, beta)
 
+    mean_p = np.mean(p)
 
-    
+    print(f"\nMEAN Pr[Y_n = 1] = {np.mean(p):5.2f}")
     print(f"BAYES: max: {sq_error_max:5.2f}  random: {sq_error_random:5.2f}  probs:{sq_error_probs:5.2f} weights:{sq_error_weights:5.2f} noisy:{sq_error_noisy:5.2f}")
 
     print(f"MLE:   max: {sq_error_mle_max:5.2f}  random: {sq_error_mle_random:5.2f}  probs:{sq_error_mle_probs:5.2f} weights:{sq_error_mle_weights:5.2f} noisy:{sq_error_mle_noisy:5.2f}")
