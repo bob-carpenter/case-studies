@@ -4,16 +4,16 @@ import cmdstanpy as csp
 csp.utils.get_logger().setLevel(logging.ERROR)
 
 
-def rw_cov_matrix(K, rho):
-    Sigma = np.zeros((K, K))
-    for i in range(K):
-        for j in range(K):
+def rw_cov_matrix(D, rho):
+    Sigma = np.zeros((D, D))
+    for i in range(D):
+        for j in range(D):
             Sigma[i, j] = rho ** abs(i - j)
     return Sigma
 
-def predictors(N, K, rho):
-    Sigma = rw_cov_matrix(K, rho)
-    mu = np.zeros(K)
+def predictors(N, D, rho):
+    Sigma = rw_cov_matrix(D, rho)
+    mu = np.zeros(D)
     return np.random.multivariate_normal(mu, Sigma, N)
 
 def sq_error(u, v):
@@ -22,18 +22,21 @@ def sq_error(u, v):
 def fit(model, data_dict):
     return model.sample(data = data_dict, show_progress = False, show_console = False)
 
-K = 20
+def inv_logit(x):
+    return 1 / (1 + exp(-x))
+
+D = 20
 N = 1000
 rho = 0.9
 
 model_logistic = csp.CmdStanModel(stan_file = "logistic-regression.stan")
 model_weighted_logistic = csp.CmdStanModel(stan_file = "weighted-logistic-regression.stan")
-model_weighted_linear = csp.CmdStanModel(stan_file = "linear-regression.stan")
+model_weighted_linear = csp.CmdStanModel(stan_file = "log-odds-linear-regression.stan")
 
 M = 10
 for rep in range(M):
-    x = predictors(N, K, rho)
-    beta = np.random.normal(0, 1, K)
+    x = predictors(N, D, rho)
+    beta = np.random.normal(0, 1, D)
 
     E_log_odds = np.dot(x, beta)
     inv_logit = lambda u: 1 / (1 + np.exp(-u))
@@ -41,15 +44,15 @@ for rep in range(M):
 
     y_max = np.where(E_y > 0.5, 1, 0)
     y_random = np.random.binomial(n=1, p=E_y)
-    y_probs = E_y
-    y_weights = E_log_odds
-    y_noisy_weights = E_log_odds + np.random.normal(0, 1, N)
-
-    data_max = {'K': K, 'N': N, 'x': x, 'y': y_max }
-    data_random = {'K': K, 'N': N, 'x': x, 'y': y_random }
-    data_probs = {'K': K, 'N': N, 'x': x, 'y': y_probs }
-    data_weights = {'K': K, 'N': N, 'x': x, 'y': y_weights }
-    data_noisy_weights = {'K': K, 'N': N, 'x': x, 'y': y_noisy_weights }
+    p = E_y
+    y_noisy_log_odds = E_log_odds + np.random.normal(0, 1, N)
+    noisy_p = inv_logit(y_noisy_log_odds)
+    
+    data_max = {'D': D, 'N': N, 'x': x, 'y': y_max }
+    data_random = {'D': D, 'N': N, 'x': x, 'y': y_random }
+    data_probs = {'D': D, 'N': N, 'x': x, 'p': p }
+    data_weights = {'D': D, 'N': N, 'x': x, 'p': p }
+    data_noisy_weights = {'D': D, 'N': N, 'x': x, 'p': noisy_p}
 
 
     
@@ -66,12 +69,12 @@ for rep in range(M):
     beta_draws_noisy_weights = fit_noisy_weights.stan_variable("beta")
 
 
-    mean_max = np.zeros(K)
-    mean_random = np.zeros(K)
-    mean_probs = np.zeros(K)
-    mean_weights = np.zeros(K)
-    mean_noisy = np.zeros(K)
-    for k in range(K):
+    mean_max = np.zeros(D)
+    mean_random = np.zeros(D)
+    mean_probs = np.zeros(D)
+    mean_weights = np.zeros(D)
+    mean_noisy = np.zeros(D)
+    for k in range(D):
         mean_max[k] = np.mean(beta_draws_max[:, k])
         mean_random[k] = np.mean(beta_draws_random[:, k])
         mean_probs[k] = np.mean(beta_draws_probs[:, k])

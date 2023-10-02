@@ -1,15 +1,15 @@
 data {
-  int<lower=1> K;                     // num predictors
-  int<lower=0> N;                     // num observations
-  matrix[N, K] x;                     // predictors
-  vector<lower=0, upper=1>[N] y;         // Pr[outcome = 1]
+  int<lower=1> D;                        // num predictors
+  int<lower=0> N;                        // num observations
+  matrix[N, D] x;                        // covariates
+  vector<lower=0, upper=1>[N] p;         // Pr[Y[n] = 1]
 }
 parameters {
-  vector[K] beta;
+  vector[D] beta;                        // regression coefficients
 }
 model {
-  beta ~ normal(0, 1);
-  vector[N] E_y = inv_logit(x * beta);
-  target += sum(y .* log(E_y));
-  target += sum((1 - y) .* log1m(E_y));
+  vector[N] E_Y = inv_logit(x * beta);   // expected Y 
+  target += sum(p .* log(E_Y));          // likelihood: weighted logistic regression
+  target += sum((1 - p) .* log1m(E_Y));  // 
+  beta ~ normal(0, 1);                   // prior:    ridge
 }
