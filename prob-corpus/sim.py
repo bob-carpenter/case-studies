@@ -19,14 +19,19 @@ def predictors(N, D, rho):
 def sq_error(u, v):
     return sum((u - v)**2)
 
-def fit(model, data_dict):
-    return model.sample(data = data_dict, show_progress = False, show_console = False)
+def fit_bayes(model, data_dict):
+    s = model.sample(data = data_dict, show_progress = False, show_console = False)
+    return s.stan_variable("beta")
+
+def fit_mle(model, data_dict):
+    mle = model.optimize(data = data_dict, show_console = False)
+    return mle.stan_variable("beta")
 
 def inv_logit(x):
     return 1 / (1 + exp(-x))
 
 D = 20
-N = 1000
+N = 100
 rho = 0.9
 
 model_logistic = csp.CmdStanModel(stan_file = "logistic-regression.stan")
@@ -54,36 +59,44 @@ for rep in range(M):
     data_weights = {'D': D, 'N': N, 'x': x, 'p': p }
     data_noisy_weights = {'D': D, 'N': N, 'x': x, 'p': noisy_p}
 
+    mle_max = fit_mle(model_logistic, data_max)
+    mle_random = fit_mle(model_logistic, data_random)
+    mle_probs = fit_mle(model_weighted_logistic, data_probs)
+    mle_weights = fit_mle(model_weighted_linear, data_weights)
+    mle_noisy = fit_mle(model_weighted_linear, data_noisy_weights)
 
-    
-    fit_max = fit(model_logistic, data_max)
-    fit_random = fit(model_logistic, data_random)
-    fit_probs = fit(model_weighted_logistic, data_probs)
-    fit_weights = fit(model_weighted_linear, data_weights)
-    fit_noisy_weights = fit(model_weighted_linear, data_noisy_weights)
-
-    beta_draws_max = fit_max.stan_variable("beta")
-    beta_draws_random = fit_random.stan_variable("beta")
-    beta_draws_probs = fit_probs.stan_variable("beta")
-    beta_draws_weights = fit_weights.stan_variable("beta")
-    beta_draws_noisy_weights = fit_noisy_weights.stan_variable("beta")
-
+    beta_draws_max = fit_bayes(model_logistic, data_max)
+    beta_draws_random = fit_bayes(model_logistic, data_random)
+    beta_draws_probs = fit_bayes(model_weighted_logistic, data_probs)
+    beta_draws_weights = fit_bayes(model_weighted_linear, data_weights)
+    beta_draws_noisy_weights = fit_bayes(model_weighted_linear, data_noisy_weights)
 
     mean_max = np.zeros(D)
     mean_random = np.zeros(D)
     mean_probs = np.zeros(D)
     mean_weights = np.zeros(D)
     mean_noisy = np.zeros(D)
-    for k in range(D):
-        mean_max[k] = np.mean(beta_draws_max[:, k])
-        mean_random[k] = np.mean(beta_draws_random[:, k])
-        mean_probs[k] = np.mean(beta_draws_probs[:, k])
-        mean_weights[k] = np.mean(beta_draws_weights[:, k])
-        mean_noisy[k] = np.mean(beta_draws_noisy_weights[:, k])
-        sq_error_max = sq_error(mean_max, beta)
-        sq_error_random = sq_error(mean_random, beta)
-        sq_error_probs = sq_error(mean_probs, beta)
-        sq_error_weights = sq_error(mean_weights, beta)
-        sq_error_noisy = sq_error(mean_noisy, beta)
+    for d in range(D):
+        mean_max[d] = np.mean(beta_draws_max[:, d])
+        mean_random[d] = np.mean(beta_draws_random[:, d])
+        mean_probs[d] = np.mean(beta_draws_probs[:, d])
+        mean_weights[d] = np.mean(beta_draws_weights[:, d])
+        mean_noisy[d] = np.mean(beta_draws_noisy_weights[:, d])
 
-    print(f"max: {sq_error_max:5.2f}  random: {sq_error_random:5.2f}  probs:{sq_error_probs:5.2f} weights:{sq_error_weights:5.2f} noisy:{sq_error_noisy:5.2f}")
+    sq_error_max = sq_error(mean_max, beta)
+    sq_error_random = sq_error(mean_random, beta)
+    sq_error_probs = sq_error(mean_probs, beta)
+    sq_error_weights = sq_error(mean_weights, beta)
+    sq_error_noisy = sq_error(mean_noisy, beta)
+
+    sq_error_mle_max = sq_error(mle_max, beta)
+    sq_error_mle_random = sq_error(mle_random, beta)
+    sq_error_mle_probs = sq_error(mle_probs, beta)
+    sq_error_mle_weights = sq_error(mle_weights, beta)
+    sq_error_mle_noisy = sq_error(mle_noisy, beta)
+
+
+    
+    print(f"BAYES: max: {sq_error_max:5.2f}  random: {sq_error_random:5.2f}  probs:{sq_error_probs:5.2f} weights:{sq_error_weights:5.2f} noisy:{sq_error_noisy:5.2f}")
+
+    print(f"MLE:   max: {sq_error_mle_max:5.2f}  random: {sq_error_mle_random:5.2f}  probs:{sq_error_mle_probs:5.2f} weights:{sq_error_mle_weights:5.2f} noisy:{sq_error_mle_noisy:5.2f}")
