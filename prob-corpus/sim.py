@@ -2,7 +2,7 @@ import numpy as np
 import logging
 import cmdstanpy as csp
 csp.utils.get_logger().setLevel(logging.ERROR)
-
+import pandas as pd
 
 def rw_cov_matrix(D, rho):
     Sigma = np.zeros((D, D))
@@ -15,7 +15,6 @@ def predictors(N, D, rho):
     Sigma = rw_cov_matrix(D, rho)
     mu = np.zeros(D)
     x = np.random.multivariate_normal(mu, Sigma, N)
-    print(f"{np.shape(x) = }")
     for n in range(N):
         x[n, 1] = 1.0  # intercept
     return x        
@@ -34,16 +33,34 @@ def fit_mle(model, data_dict):
 def inv_logit(x):
     return 1 / (1 + exp(-x))
 
-D = 20
-N = 500
+def add_row(df, beta_hat, beta, estimator, data):
+    return pd.concat([df, pd.DataFrame({'error': (sq_error(beta_hat, beta), ),
+                                            'estimator': (estimator, ),
+                                            'data': (data, )})],
+                         ignore_index=True)
+
+D = 21
+N = 100
 rho = 0.9
 
 model_logistic = csp.CmdStanModel(stan_file = "logistic-regression.stan")
 model_weighted_logistic = csp.CmdStanModel(stan_file = "weighted-logistic-regression.stan")
 model_weighted_linear = csp.CmdStanModel(stan_file = "log-odds-linear-regression.stan")
 
-M = 10
-for rep in range(M):
+M = 3
+errs_max = np.zeros(M)
+errs_random = np.zeros(M)
+errs_probs = np.zeros(M)
+errs_weights = np.zeros(M)
+errs_noisy = np.zeros(M)
+errs_max_mle = np.zeros(M)
+errs_random_mle = np.zeros(M)
+errs_probs_mle = np.zeros(M)
+errs_weights_mle = np.zeros(M)
+errs_noisy_mle = np.zeros(M)
+
+df = pd.DataFrame({'error': (), 'estimator': (), 'data': ()})
+for m in range(M):
     x = predictors(N, D, rho)
     beta = np.random.normal(0, 1, D)
 
@@ -87,21 +104,17 @@ for rep in range(M):
         mean_weights[d] = np.mean(beta_draws_weights[:, d])
         mean_noisy[d] = np.mean(beta_draws_noisy_weights[:, d])
 
-    sq_error_max = sq_error(mean_max, beta)
-    sq_error_random = sq_error(mean_random, beta)
-    sq_error_probs = sq_error(mean_probs, beta)
-    sq_error_weights = sq_error(mean_weights, beta)
-    sq_error_noisy = sq_error(mean_noisy, beta)
+    df = add_row(df, mean_max, beta, "Bayes", "max")        
+    df = add_row(df, mean_random, beta, "Bayes", "max")        
+    df = add_row(df, mean_probs, beta, "Bayes", "max")        
+    df = add_row(df, mean_weights, beta, "Bayes", "max")        
+    df = add_row(df, mean_noisy, beta, "Bayes", "max")        
 
-    sq_error_mle_max = sq_error(mle_max, beta)
-    sq_error_mle_random = sq_error(mle_random, beta)
-    sq_error_mle_probs = sq_error(mle_probs, beta)
-    sq_error_mle_weights = sq_error(mle_weights, beta)
-    sq_error_mle_noisy = sq_error(mle_noisy, beta)
 
-    mean_p = np.mean(p)
+    df = add_row(df, mle_max, beta, "MLE", "max")        
+    df = add_row(df, mle_random, beta, "MLE", "max")        
+    df = add_row(df, mle_probs, beta, "MLE", "max")        
+    df = add_row(df, mle_weights, beta, "MLE", "max")        
+    df = add_row(df, mle_noisy, beta, "MLE", "max")        
 
-    print(f"\nMEAN Pr[Y_n = 1] = {np.mean(p):5.2f}")
-    print(f"BAYES: max: {sq_error_max:5.2f}  random: {sq_error_random:5.2f}  probs:{sq_error_probs:5.2f} weights:{sq_error_weights:5.2f} noisy:{sq_error_noisy:5.2f}")
-
-    print(f"MLE:   max: {sq_error_mle_max:5.2f}  random: {sq_error_mle_random:5.2f}  probs:{sq_error_mle_probs:5.2f} weights:{sq_error_mle_weights:5.2f} noisy:{sq_error_mle_noisy:5.2f}")
+print(df)
