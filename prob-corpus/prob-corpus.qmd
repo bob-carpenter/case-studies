@@ -42,54 +42,28 @@ format:
 bibliography: references.bib
 ---
 
-#### Python libraries and logging {.unnumbered}
-
-```{python}
-#| code-fold: true
-import numpy as np
-import pandas as pd
-import cmdstanpy as csp
-import plotnine as pn
-
-# don't wrap table output
-pd.set_option('display.width', None)
-pd.set_option('display.max_colwidth', None)
-
-# drop MC standard error (col 1) and ESS/second (col 6)
-def short_summary(fit):
-   summary = fit.summary(percentiles=(5, 95), sig_figs=2)
-   return summary.iloc[:, [0, 2, 3, 4, 5, 7]]
-```
-
 # Introduction
 
-In this short technical note, I will consider several approaches to
-training a binary classifier in the situation where the probability of
-each item's outcome is known. The motivating example is the
-probability assigned by a model of data rating (also known as coding,
-annotation, labeling, and crowdsourcing) such as that of @dawid1979.
-With a model of annotation, we only have noisy estimates of the true
-probabilities, so I consider measurement error in the probability estimates.
+This short technical note lays out several approaches to training a
+classifier when the probability of each item's outcome is known. The
+motivating example is the probability assigned by a model of data
+rating (also known as coding, annotation, labeling, and crowdsourcing),
+such as that of @dawid1979.
 
-The primary result I would like to highlight is that if you have
-probabilistic information, it is best to use those probabilities to
-train.  Best here means best at recovering true parameter values, and
-hence best at prediction.  Training using probabilities means either
-using logistic regression software that allows training with
-probabilistically weighted outcomes or we can exploit the structure of
-logistic regression and use the log odds of the probabilities to train
-a linear regression.  The next best approach is to follow the
-generative model and sample the outcomes given the probabilities and
-train a non-probabilistic regression model using that data.  The worst
-approach, by far, is to use the most probable outcome.  Approaches to
-crowdsourcing using a majority vote approach are instances of this
-suboptimal strategy.
+This note presents two results.  The first result is that when
+creating a corpus, it is more effective to sample the category for
+each item given its probability distribution than it is to assign it
+the most probable category. Approaches to crowdsourcing using a
+majority vote approach are instances of this suboptimal strategy.
 
-I will evaluate these approaches to corpus construction and training
-using both maximum likelihood and Bayesian posterior inference.  The
-data is simulated so that we can benchmark error versus true parameter
+The second result is that it is even better to use the probabilistic
+data directly.  The second result is a direct consequence of the
+Rao-Blackwell theorem in the Bayesian setting.
+
+Evaluations use both Bayesian posterior mean estimators and penalized
+maximum likelihood estimators.  As expected from theory, Bayesian
+posterior means show lower squared error versus the true parameter
 values.
-
 
 # Logistic regression
 
@@ -406,7 +380,7 @@ $$
 x_n \cdot \beta, 1) \right)
 - \frac{1}{2} \beta^\top \cdot \beta.
 $$
-For estimation, we use optimziation on the objective function.
+For estimation, we use optimization on the objective function.
 
 # Stan models
 
@@ -452,7 +426,7 @@ $$
 ## Stan program for log odds linear regression
 
 The Stan program for linear regression on the log odds implements the
-following log posteiror up to an additive constant.
+following log posterior up to an additive constant.
 $$
 \log p(\beta \mid x, p)
 = \log p(\beta)
@@ -461,10 +435,229 @@ $$
   + \textrm{const}.
 $$
 
-
-
 ```{.stan include="log-odds-linear-regression.stan"
           filename="log-odds-linear-regression.stan"}
 ```
 
 
+# Evaluation
+
+The evaluation is coded in Python using the CmdStanPy interface to
+Stan using NumPy, pandas, and plotnine.   The first step is to import
+these libraries, configure logger to only report errors, and set a
+random seed for NumPy.
+
+```{python}
+#| code-fold: true
+import logging
+import numpy as np
+import pandas as pd
+import plotnine as pn
+import cmdstanpy as csp
+csp.utils.get_logger().setLevel(logging.ERROR)  # only log errors
+
+np.random.seed(12345)   # change seed for fresh simulation
+```
+
+Second, define functions to use later.
+
+```{python}
+def rw_cov_matrix(D, rho):
+    Sigma = np.zeros((D, D))
+    for i in range(D):
+        for j in range(D):
+            Sigma[i, j] = rho ** abs(i - j)
+    return Sigma
+
+def random_predictors(N, D, rho):
+    Sigma = rw_cov_matrix(D, rho)
+    mu = np.zeros(D)
+    x = np.random.multivariate_normal(mu, Sigma, N)
+    for n in range(N):
+        x[n, 1] = 1.0  # intercept
+    return x
+    
+def sq_error(u, v):
+    return sum((u - v)**2)
+
+def fit_bayes(model, data_dict):
+    s = model.sample(data = data_dict, show_progress = False, show_console = False, seed=12345)
+    return s.stan_variable("beta")
+
+def fit_mle(model, data_dict):
+    mle = model.optimize(data = data_dict, show_console = False, seed=12345)
+    return mle.stan_variable("beta")
+
+def inv_logit(x):
+    return 1 / (1 + exp(-x))
+
+def add_row(df, beta_hat, beta, estimator, data):
+    return pd.concat([df, pd.DataFrame({'error': (sq_error(beta_hat, beta), ),
+                                            'estimator': (estimator, ),
+                                            'data': (data, )})],
+                         ignore_index=True)
+```
+
+Third, compile the Stan programs introduced in the previous section.
+
+```{python}
+model_logistic = csp.CmdStanModel(stan_file = "logistic-regression.stan")
+model_weighted_logistic = csp.CmdStanModel(stan_file = "weighted-logistic-regression.stan")
+model_log_odds_linear = csp.CmdStanModel(stan_file = "log-odds-linear-regression.stan")
+```
+
+Fourth, set all the constants determining sizes for the simulation.
+
+```{python}
+D = 21           # number of predictors including intercept
+N = 200          # number of data points used to train
+rho = 0.9        # correlation of predictor RW covariance
+M = 50           # number of simulations
+```
+
+Fifth, allocate a pandas data frame to store the results, then collect
+results `M` iterations.  Within each iteration, generate predictors
+and the various outcomes randomly.  For each of these, calculate the
+penalized MLE and Bayesian posterior mean and add them to the data frame.
+
+```{python}
+df = pd.DataFrame({'error': (), 'estimator': (), 'data': ()})
+for m in range(M):
+    print(f"Iteration: m = {m + 1} / {M}")
+
+    # Data generation
+    x = random_predictors(N, D, rho)
+    beta = np.random.normal(0, 1, D)
+    E_log_odds = np.dot(x, beta)
+    inv_logit = lambda u: 1 / (1 + np.exp(-u))
+    E_y = inv_logit(E_log_odds)
+    y_max = np.where(E_y > 0.5, 1, 0)
+    y_random = np.random.binomial(n=1, p=E_y)
+    p = E_y
+    y_noisy_log_odds = E_log_odds + np.random.normal(0, 1, N)
+    noisy_p = inv_logit(y_noisy_log_odds)
+    data_max = {'D': D, 'N': N, 'x': x, 'y': y_max }
+    data_random = {'D': D, 'N': N, 'x': x, 'y': y_random }
+    data_probs = {'D': D, 'N': N, 'x': x, 'p': p }
+    data_weights = {'D': D, 'N': N, 'x': x, 'p': p }
+    data_noisy_weights = {'D': D, 'N': N, 'x': x, 'p': noisy_p}
+
+    # Penalized MLE
+    mle_max = fit_mle(model_logistic, data_max)
+    mle_random = fit_mle(model_logistic, data_random)
+    mle_probs = fit_mle(model_weighted_logistic, data_probs)
+    mle_weights = fit_mle(model_log_odds_linear, data_weights)
+    mle_noisy = fit_mle(model_log_odds_linear, data_noisy_weights)
+    df = add_row(df, mle_max, beta, "MLE", "max")        
+    df = add_row(df, mle_random, beta, "MLE", "random")        
+    df = add_row(df, mle_probs, beta, "MLE", "probs")        
+    df = add_row(df, mle_weights, beta, "MLE", "weights")        
+    df = add_row(df, mle_noisy, beta, "MLE", "noisy")        
+
+    # Bayesian
+    beta_draws_max = fit_bayes(model_logistic, data_max)
+    beta_draws_random = fit_bayes(model_logistic, data_random)
+    beta_draws_probs = fit_bayes(model_weighted_logistic, data_probs)
+    beta_draws_weights = fit_bayes(model_log_odds_linear, data_weights)
+    beta_draws_noisy_weights = fit_bayes(model_log_odds_linear, data_noisy_weights)
+    mean_max = np.zeros(D)
+    mean_random = np.zeros(D)
+    mean_probs = np.zeros(D)
+    mean_weights = np.zeros(D)
+    mean_noisy = np.zeros(D)
+    for d in range(D):
+        mean_max[d] = np.mean(beta_draws_max[:, d])
+        mean_random[d] = np.mean(beta_draws_random[:, d])
+        mean_probs[d] = np.mean(beta_draws_probs[:, d])
+        mean_weights[d] = np.mean(beta_draws_weights[:, d])
+        mean_noisy[d] = np.mean(beta_draws_noisy_weights[:, d])
+    df = add_row(df, mean_max, beta, "Bayes", "max")        
+    df = add_row(df, mean_random, beta, "Bayes", "random")        
+    df = add_row(df, mean_probs, beta, "Bayes", "probs")        
+    df = add_row(df, mean_weights, beta, "Bayes", "weights")        
+    df = add_row(df, mean_noisy, beta, "Bayes", "noisy")  
+```
+
+Finally, print the results as a table with a custom reporter for
+means, 0.1, 0.5 (median), 0.9 quantiles, and the minimum and maximum,
+rounding to a single decimal place.
+
+```{python}
+def summary(x):
+    return pd.Series({
+        'mean': np.mean(x),
+        '10%': np.quantile(x, 0.1),
+        'median': np.quantile(x, 0.5),
+        '90%': np.quantile(x, 0.9),
+        'min': np.min(x),
+        'max': np.max(x)
+    })
+
+summary = df.groupby(['estimator','data'])['error'].apply(summary).unstack()
+print(summary.round(1))
+```
+
+The results can also be presented via histograms faceted by data type
+and estimator.
+
+```{python}
+plot = (pn.ggplot(df, pn.aes(x = 'error'))
+    + pn.geom_histogram(bins = 10, color='white', size=0.1)
+    + pn.facet_grid('estimator ~ data', scales="free_x")
+    + pn.scale_x_log10())
+print(plot)
+```
+
+The simulations clearly show that training with logit-transformed
+probabilities is the most effective, followed by noisy
+logit-transformed probabilities and weighted training, followed by
+random sampling, and finally, far behind, taking the most probable
+category.
+
+The penalized maximum likelihood estimator is better at handling the
+most probable category sampling, but is otherwise similar or slightly
+trails the Bayesian estimator.
+
+# Further reading
+
+@stan2023 describes the Stan language and @stan2023 provides a user
+manual with descriptions of how to fit both crowdsourcing and logistic
+regression models.
+
+@dawid1979 first modeled crowdsourcing as noisy raters providing
+measurements conditioned on the true value.  In a binary task, each
+rater's sensitivity and specificity is estimated, as is the prevalence
+of successful (1) outcomes, which allows a probabilistic assignment of
+category to each item.  It is straightforward to extend Dawid and
+Skene's model to a Bayesian hierarchical model as shown in the "Latent
+discrete parameters" chapter of the *Stan User's Guide.*
+
+@raykar2010 is the first example of jointly training a classifier and
+crowdsourcing model.  The maximum likelihood approach the authors
+employ can be easily extended to a Bayesian hierarchical model.
+
+@passonneau2014 use a million crowdsourced ratings over forty thousand
+items for word sense disambiguation in natural language processing.
+This paper provides a high-level motivation for rating models over
+weighted voting approaches and inter-annotator agreement measures.
+It also describes how the model handles spammy and adversarial
+annotators, discusses identifiability issues, and suggests a method of
+active learning based on the model.  Even with 20 raters per item,
+the ratings of some items did not converge, which further undercuts
+
+@gneiting2007 and @gneiting2007b provide an excellent overview of
+proper scoring metrics and calibrated prediction, respectively.
+
+
+
+# Conclusions
+
+If you have a data set with probabilistic labels, the best thing to do
+is to train with those probabilities.  In the case of logistic
+regression, you can go one step better by log odds transforming the
+probabilities and directly training a linear regression.  If you are
+restricted to estimation (training) software that can only handle
+deterministic categories, then the best thing to do is to sample the
+categories randomly given the probabilities.  Whatever you do, do not
+take the most probable category or use majority voting for
+crowdsourcing. 
