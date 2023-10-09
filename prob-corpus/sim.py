@@ -63,6 +63,7 @@ for m in range(M):
     p = E_y
     y_noisy_log_odds = E_log_odds + np.random.normal(0, 1, N)
     noisy_p = inv_logit(y_noisy_log_odds)
+
     data_max = {'D': D, 'N': N, 'x': x, 'y': y_max }
     data_random = {'D': D, 'N': N, 'x': x, 'y': y_random }
     data_probs = {'D': D, 'N': N, 'x': x, 'p': p }
