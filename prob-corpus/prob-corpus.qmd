@@ -54,16 +54,21 @@ This note presents two results.  The first result is that when
 creating a corpus, it is more effective to sample the category for
 each item given its probability distribution than it is to assign it
 the most probable category. Approaches to crowdsourcing using a
-majority vote approach are instances of this suboptimal strategy.
+majority vote approach are instances of the suboptimal most-probable
+strategy.
 
-The second result is that it is even better to use the probabilistic
-data directly.  The second result is a direct consequence of the
+The second result is that it is even better to use the category
+probabilities directly.  This is a direct consequence of the
 Rao-Blackwell theorem in the Bayesian setting.
 
-Evaluations use both Bayesian posterior mean estimators and penalized
-maximum likelihood estimators.  As expected from theory, Bayesian
-posterior means show lower squared error versus the true parameter
-values.
+These results hold for both Bayesian posterior mean estimators and
+penalized maximum likelihood estimators.  The Bayesian posterior mean
+estimator minimizes expected square error, which is borne out
+experimentally when the data is generated probabilistically according
+to the generative model or weighted logistic regression training is
+used.  Under the other data generation regimes, the results are
+indistinguishable. 
+
 
 # Logistic regression
 
@@ -440,7 +445,7 @@ $$
 ```
 
 
-# Evaluation
+# Evaluation of estimation
 
 The evaluation is coded in Python using the CmdStanPy interface to
 Stan using NumPy, pandas, and plotnine.   The first step is to import
@@ -481,7 +486,8 @@ def sq_error(u, v):
     return sum((u - v)**2)
 
 def fit_bayes(model, data_dict):
-    s = model.sample(data = data_dict, show_progress = False, show_console = False, seed=12345)
+    s = model.sample(data = data_dict, show_progress = False,
+    show_console = False, seed=12345, inits = 0)
     return s.stan_variable("beta")
 
 def fit_mle(model, data_dict):
@@ -509,10 +515,10 @@ model_log_odds_linear = csp.CmdStanModel(stan_file = "log-odds-linear-regression
 Fourth, set all the constants determining sizes for the simulation.
 
 ```{python}
-D = 21           # number of predictors including intercept
-N = 200          # number of data points used to train
+D = 11           # number of predictors including intercept
+N = 100           # number of data points used to train
 rho = 0.9        # correlation of predictor RW covariance
-M = 50           # number of simulations
+M = 10          # number of simulations
 ```
 
 Fifth, allocate a pandas data frame to store the results, then collect
@@ -523,8 +529,6 @@ penalized MLE and Bayesian posterior mean and add them to the data frame.
 ```{python}
 df = pd.DataFrame({'error': (), 'estimator': (), 'data': ()})
 for m in range(M):
-    print(f"Iteration: m = {m + 1} / {M}")
-
     # Data generation
     x = random_predictors(N, D, rho)
     beta = np.random.normal(0, 1, D)
@@ -548,11 +552,11 @@ for m in range(M):
     mle_probs = fit_mle(model_weighted_logistic, data_probs)
     mle_weights = fit_mle(model_log_odds_linear, data_weights)
     mle_noisy = fit_mle(model_log_odds_linear, data_noisy_weights)
-    df = add_row(df, mle_max, beta, "MLE", "max")        
+    df = add_row(df, mle_max, beta, "MLE", "most probable")        
     df = add_row(df, mle_random, beta, "MLE", "random")        
-    df = add_row(df, mle_probs, beta, "MLE", "probs")        
-    df = add_row(df, mle_weights, beta, "MLE", "weights")        
-    df = add_row(df, mle_noisy, beta, "MLE", "noisy")        
+    df = add_row(df, mle_probs, beta, "MLE", "weighted")        
+    df = add_row(df, mle_weights, beta, "MLE", "log odds")
+    df = add_row(df, mle_noisy, beta, "MLE", "noisy log odds")        
 
     # Bayesian
     beta_draws_max = fit_bayes(model_logistic, data_max)
@@ -571,11 +575,11 @@ for m in range(M):
         mean_probs[d] = np.mean(beta_draws_probs[:, d])
         mean_weights[d] = np.mean(beta_draws_weights[:, d])
         mean_noisy[d] = np.mean(beta_draws_noisy_weights[:, d])
-    df = add_row(df, mean_max, beta, "Bayes", "max")        
+    df = add_row(df, mean_max, beta, "Bayes", "most probable")        
     df = add_row(df, mean_random, beta, "Bayes", "random")        
-    df = add_row(df, mean_probs, beta, "Bayes", "probs")        
-    df = add_row(df, mean_weights, beta, "Bayes", "weights")        
-    df = add_row(df, mean_noisy, beta, "Bayes", "noisy")  
+    df = add_row(df, mean_probs, beta, "Bayes", "weighted")        
+    df = add_row(df, mean_weights, beta, "Bayes", "log odds")        
+    df = add_row(df, mean_noisy, beta, "Bayes", "noisy log odds")
 ```
 
 Finally, print the results as a table with a custom reporter for
@@ -617,6 +621,63 @@ category.
 The penalized maximum likelihood estimator is better at handling the
 most probable category sampling, but is otherwise similar or slightly
 trails the Bayesian estimator.
+
+# Predictive inference
+
+Logistic regression is popular because after a model is trained, it
+may be used predictively to map a vector of covariates for a new item
+to a probabilistic prediction of its category.
+
+## Bayesian posterior predictive inference
+
+Suppose the training data is a sequence of pairs $(x_n, y_n)$ where
+$x_n \in \mathbb{R}^D$ and $y_n \in \{ 0, 1 \}$ for $n \in 1{:}N.$.
+Now suppose there are new items with covariates $\widetilde{x}_n$ for
+$n \in 1{:}\widetilde{N}.$  For each new item $\widetilde{x}_n,$ the
+prediction for an outcome $\widetilde{y}_n \in \{ 0, 1 \}$ is given by
+the posterior predictive probability mass function,
+\begin{align*}
+p(\widetilde{y} \mid \widetilde{x}_n, x, y)
+&= \mathbb{E}[\widetilde{Y} \mid  \widetilde{x}_n, x, y)
+\\
+&= \int_{\mathbb{R}^D} p(\widetilde{y} \mid \beta) \cdot p(\beta \mid
+x, y) \ \textrm{d}\beta.
+\end{align*}
+With MCMC draws $\draw{\beta}{m} \sim p(\beta \mid x, y)$ for $m \in 1{:}M,$this quantity can be estimated as
+$$
+p(\widetilde{y} \mid \widetilde{x}_n, x, y)
+\approx
+\frac{1}{M} \sum_{m = 1}^M p(\widetilde{y}_n \mid \widetilde{x}_n \mid
+\beta).
+$$
+
+## Frequentist plug-in inference
+
+Standard practice in machine learning fits a penalized maximum
+likelihood estimate $\beta^* = \textrm{arg max}_\beta \log p(y \mid x,
+\beta) - \mathcal{P}(\beta),$ and plugging that in for prediction,
+$$
+p(\widetilde{y} \mid \widetilde{x}_n, x, y)
+\approx
+p(\widetilde{y} \mid \beta^*).
+$$
+
+# Evaluation of predictive inference
+
+For evaluation of both fully Bayesian and plug-in inference, the
+followin Stan model suffices.
+
+```{.stan include="logistic-regression-predict.stan"
+          filename="logistic-regression-predict.stan"}
+```
+
+The data includes both the test covariates and the test outcomes.  The
+parameters are the same as in the models for training.  For predictive
+inference, the model block is replaced with a generated quantities
+block that assigns the log density of the data given the parameters to
+the variable `log_p_t`.  
+
+
 
 # Further reading
 

@@ -20,8 +20,6 @@ def predictors(N, D, rho):
         x[n, 1] = 1.0  # intercept
     return x        
 
-
-
 def sq_error(u, v):
     return sum((u - v)**2)
 
