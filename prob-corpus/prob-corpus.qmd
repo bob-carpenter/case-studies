@@ -387,14 +387,68 @@ x_n \cdot \beta, 1) \right)
 $$
 For estimation, we use optimization on the objective function.
 
-# Stan models
+
+# Predictive inference
+
+After fitting a logistic regression modle, it may be used for
+prediction.  Specifically, it can be used to transform a vector of
+covariates for a new item to a probabilistic prediction of its
+category.
+
+## Bayesian posterior predictive inference
+
+Suppose the training data is a sequence of pairs $(x_n, y_n)$ where
+$x_n \in \mathbb{R}^D$ and $y_n \in \{ 0, 1 \}$ for $n \in 1{:}N.$.
+Now suppose there are new items with covariates $\widetilde{x}_n$ for
+$n \in 1{:}\widetilde{N}.$  For each new item $\widetilde{x}_n,$ the
+prediction for an outcome $\widetilde{y}_n \in \{ 0, 1 \}$ is given by
+the posterior predictive probability mass function,
+\begin{align*}
+p(\widetilde{y} \mid \widetilde{x}_n, x, y)
+&= \mathbb{E}\!\left[\widetilde{Y} \,\big|\, \widetilde{x}_n, x, y\right]
+\\[4pt]
+&= \int_{\mathbb{R}^D} p(\widetilde{y} \mid \beta) \cdot p(\beta \mid
+x, y) \ \textrm{d}\beta.
+\end{align*}
+
+With a sample of MCMC draws
+$$
+\beta^{(1)}, \ldots, \beta^{(M)} \sim p(\beta \mid x, y)
+$$
+for $m \in 1{:}M,$ this quantity can be estimated as
+$$
+p(\widetilde{y} \mid \widetilde{x}_n, x, y)
+\approx
+\frac{1}{M} \sum_{m = 1}^M p\!\left(\widetilde{y}_n \,\big|\, \widetilde{x}_n, 
+\beta^{(m)}\right).
+$$
+
+## Frequentist plug-in inference
+
+Standard practice in machine learning fits a penalized maximum
+likelihood estimate
+$$
+\beta^*
+= \textrm{arg max}_\beta \
+  \log p(y \mid x, \beta) - \mathcal{P}(\beta),
+$$
+which is plugged in for prediction,
+$$
+p(\widetilde{y} \mid \widetilde{x}_n, x, y)
+\approx
+p(\widetilde{y} \mid \widetilde{x}_n, \beta^*).
+$$
+
+# Simulation-based evaluation
+
+## Stan models
 
 There are three objective functions in play, based on whether the data
 under consideration is given as discrete outcomes $y_n$ or
 probabilities $p_n$, and in the case of probabilities, whether they
 are transformed to log odds for a linear regression.  
 
-## Stan program for logistic regression
+### Stan program for logistic regression
 
 The Stan program for logistic regression implements the following log
 posterior up to an additive constant, 
@@ -410,17 +464,21 @@ $$
 ```
 
 
-## Stan program for probability-weighted logistic regression
+### Stan program for probability-weighted logistic regression
 
 The Stan program for probability-weighted logistic regression
 implements the following log posterior up to an additive constant,
 $$
 \log p(\beta \mid x, p)
 = \log p(\beta)
-  + \sum_{n=1}^N \left( \strut
+  + \sum_{n=1}^N \left(
+      \begin{array}{l}
       p_n \cdot \log \textrm{bernoulli}(1 \mid \textrm{logit}^{-1}(x_n \cdot \beta))
-      + (1 - p_n) \cdot \textrm{bernoulli}(0 \mid \textrm{logit}^{-1}(x_n \cdot \beta))
-    \right)     
+      \\[2pt]
+      \ + (1 - p_n) \cdot \textrm{bernoulli}(0 \mid
+      \textrm{logit}^{-1}(x_n \cdot \beta)) 
+    \end{array}
+    \right)
   + \textrm{const}.
 $$
 
@@ -428,7 +486,7 @@ $$
           filename="weighted-logistic-regression.stan"}
 ```
 
-## Stan program for log odds linear regression
+### Stan program for log odds linear regression
 
 The Stan program for linear regression on the log odds implements the
 following log posterior up to an additive constant.
@@ -445,7 +503,7 @@ $$
 ```
 
 
-# Evaluation of estimation
+## Evaluation of estimation
 
 The evaluation is coded in Python using the CmdStanPy interface to
 Stan using NumPy, pandas, and plotnine.   The first step is to import
@@ -455,6 +513,7 @@ random seed for NumPy.
 ```{python}
 #| code-fold: true
 import logging
+import scipy as sp
 import numpy as np
 import pandas as pd
 import plotnine as pn
@@ -504,21 +563,24 @@ def add_row(df, beta_hat, beta, estimator, data):
                          ignore_index=True)
 ```
 
+
 Third, compile the Stan programs introduced in the previous section.
 
 ```{python}
 model_logistic = csp.CmdStanModel(stan_file = "logistic-regression.stan")
 model_weighted_logistic = csp.CmdStanModel(stan_file = "weighted-logistic-regression.stan")
 model_log_odds_linear = csp.CmdStanModel(stan_file = "log-odds-linear-regression.stan")
+model_predict = csp.CmdStanModel(stan_file = "logistic-regression-predict.stan")
 ```
 
 Fourth, set all the constants determining sizes for the simulation.
 
 ```{python}
-D = 11           # number of predictors including intercept
-N = 100           # number of data points used to train
-rho = 0.9        # correlation of predictor RW covariance
-M = 10          # number of simulations
+D = 11        # number of predictors including intercept
+N = 100       # number of data points used to train
+rho = 0.9     # correlation of predictor RW covariance
+N_test = 100  # number of test items
+M = 10        # number of simulation runs
 ```
 
 Fifth, allocate a pandas data frame to store the results, then collect
@@ -527,13 +589,17 @@ and the various outcomes randomly.  For each of these, calculate the
 penalized MLE and Bayesian posterior mean and add them to the data frame.
 
 ```{python}
+def inv_logit(u):
+    return 1 / (1 + np.exp(-u))
+
 df = pd.DataFrame({'error': (), 'estimator': (), 'data': ()})
 for m in range(M):
-    # Data generation
-    x = random_predictors(N, D, rho)
+    # parameter generation
     beta = np.random.normal(0, 1, D)
+
+    # Training data generation
+    x = random_predictors(N, D, rho)
     E_log_odds = np.dot(x, beta)
-    inv_logit = lambda u: 1 / (1 + np.exp(-u))
     E_y = inv_logit(E_log_odds)
     y_max = np.where(E_y > 0.5, 1, 0)
     y_random = np.random.binomial(n=1, p=E_y)
@@ -543,14 +609,13 @@ for m in range(M):
     data_max = {'D': D, 'N': N, 'x': x, 'y': y_max }
     data_random = {'D': D, 'N': N, 'x': x, 'y': y_random }
     data_probs = {'D': D, 'N': N, 'x': x, 'p': p }
-    data_weights = {'D': D, 'N': N, 'x': x, 'p': p }
     data_noisy_weights = {'D': D, 'N': N, 'x': x, 'p': noisy_p}
 
     # Penalized MLE
     mle_max = fit_mle(model_logistic, data_max)
     mle_random = fit_mle(model_logistic, data_random)
     mle_probs = fit_mle(model_weighted_logistic, data_probs)
-    mle_weights = fit_mle(model_log_odds_linear, data_weights)
+    mle_weights = fit_mle(model_log_odds_linear, data_probs)
     mle_noisy = fit_mle(model_log_odds_linear, data_noisy_weights)
     df = add_row(df, mle_max, beta, "MLE", "most probable")        
     df = add_row(df, mle_random, beta, "MLE", "random")        
@@ -562,7 +627,7 @@ for m in range(M):
     beta_draws_max = fit_bayes(model_logistic, data_max)
     beta_draws_random = fit_bayes(model_logistic, data_random)
     beta_draws_probs = fit_bayes(model_weighted_logistic, data_probs)
-    beta_draws_weights = fit_bayes(model_log_odds_linear, data_weights)
+    beta_draws_weights = fit_bayes(model_log_odds_linear, data_probs)
     beta_draws_noisy_weights = fit_bayes(model_log_odds_linear, data_noisy_weights)
     mean_max = np.zeros(D)
     mean_random = np.zeros(D)
@@ -622,47 +687,8 @@ The penalized maximum likelihood estimator is better at handling the
 most probable category sampling, but is otherwise similar or slightly
 trails the Bayesian estimator.
 
-# Predictive inference
 
-Logistic regression is popular because after a model is trained, it
-may be used predictively to map a vector of covariates for a new item
-to a probabilistic prediction of its category.
-
-## Bayesian posterior predictive inference
-
-Suppose the training data is a sequence of pairs $(x_n, y_n)$ where
-$x_n \in \mathbb{R}^D$ and $y_n \in \{ 0, 1 \}$ for $n \in 1{:}N.$.
-Now suppose there are new items with covariates $\widetilde{x}_n$ for
-$n \in 1{:}\widetilde{N}.$  For each new item $\widetilde{x}_n,$ the
-prediction for an outcome $\widetilde{y}_n \in \{ 0, 1 \}$ is given by
-the posterior predictive probability mass function,
-\begin{align*}
-p(\widetilde{y} \mid \widetilde{x}_n, x, y)
-&= \mathbb{E}[\widetilde{Y} \mid  \widetilde{x}_n, x, y)
-\\
-&= \int_{\mathbb{R}^D} p(\widetilde{y} \mid \beta) \cdot p(\beta \mid
-x, y) \ \textrm{d}\beta.
-\end{align*}
-With MCMC draws $\draw{\beta}{m} \sim p(\beta \mid x, y)$ for $m \in 1{:}M,$this quantity can be estimated as
-$$
-p(\widetilde{y} \mid \widetilde{x}_n, x, y)
-\approx
-\frac{1}{M} \sum_{m = 1}^M p(\widetilde{y}_n \mid \widetilde{x}_n \mid
-\beta).
-$$
-
-## Frequentist plug-in inference
-
-Standard practice in machine learning fits a penalized maximum
-likelihood estimate $\beta^* = \textrm{arg max}_\beta \log p(y \mid x,
-\beta) - \mathcal{P}(\beta),$ and plugging that in for prediction,
-$$
-p(\widetilde{y} \mid \widetilde{x}_n, x, y)
-\approx
-p(\widetilde{y} \mid \beta^*).
-$$
-
-# Evaluation of predictive inference
+## Evaluation of predictive inference
 
 For evaluation of both fully Bayesian and plug-in inference, the
 followin Stan model suffices.
@@ -675,15 +701,77 @@ The data includes both the test covariates and the test outcomes.  The
 parameters are the same as in the models for training.  For predictive
 inference, the model block is replaced with a generated quantities
 block that assigns the log density of the data given the parameters to
-the variable `log_p_t`.  
+the variable `log_p_t`.
+
+The evaluation follows the earlier evaluation, only we now measure
+predictive accuracy rather than estimation accuracy.  
+
+```{python}
+N = 200
+N_test = 100
+for m in range(M):
+    beta = np.random.normal(0, 1, D)
+
+    # Training data generation
+    x = random_predictors(N, D, rho)
+    E_log_odds = np.dot(x, beta)
+    E_y = inv_logit(E_log_odds)
+    y_max = np.where(E_y > 0.5, 1, 0)
+    y_random = np.random.binomial(n=1, p=E_y)
+    noisy_E_log_odds = E_log_odds + np.random.normal(0, 1, N)
+    noisy_E_y = inv_logit(noisy_E_log_odds)
+    data_max = {'D': D, 'N': N, 'x': x, 'y': y_max }
+    data_random = {'D': D, 'N': N, 'x': x, 'y': y_random }
+    data_probs = {'D': D, 'N': N, 'x': x, 'p': E_y }
+    data_noisy_weights = {'D': D, 'N': N, 'x': x, 'p': noisy_E_y}
+
+    # Test data generation
+    x_test = random_predictors(N_test, D, rho)
+    E_y_test = inv_logit(np.dot(x_test, beta))
+    y_test = np.random.binomial(n = 1, p = E_y_test)
+
+    # Penalized MLE fit
+    mle_max = fit_mle(model_logistic, data_max)
+    mle_random = fit_mle(model_logistic, data_random)
+    mle_probs = fit_mle(model_weighted_logistic, data_probs)
+    mle_weights = fit_mle(model_log_odds_linear, data_probs)
+    mle_noisy = fit_mle(model_log_odds_linear, data_noisy_weights)
+
+    # Penalized MLE prediction
+    lp_mle_max = sp.stats.bernoulli.logpmf(y_test, inv_logit(np.dot(x_test, mle_max))).sum()
+    lp_mle_random = sp.stats.bernoulli.logpmf(y_test,  inv_logit(np.dot(x_test, mle_random))).sum()
+    lp_mle_probs = sp.stats.bernoulli.logpmf(y_test, inv_logit(np.dot(x_test, mle_probs))).sum()
+    lp_mle_weights = sp.stats.bernoulli.logpmf(y_test, inv_logit(np.dot(x_test, mle_weights))).sum()
+    lp_mle_noisy_weights = sp.stats.bernoulli.logpmf(y_test, inv_logit(np.dot(x_test, mle_noisy))).sum()
+
+    Pr_rate_max = np.exp(lp_mle_max / N_test)
+    Pr_rate_random = np.exp(lp_mle_random / N_test)
+    Pr_rate_probs = np.exp(lp_mle_probs / N_test)
+    Pr_rate_weights = np.exp(lp_mle_weights / N_test)
+    Pr_rate_noisy_weights = np.exp(lp_mle_noisy_weights / N_test)
+
+    # Bayesian fit
+    beta_draws_max = fit_bayes(model_logistic, data_max)
+    beta_draws_random = fit_bayes(model_logistic, data_random)
+    beta_draws_probs = fit_bayes(model_weighted_logistic, data_probs)
+    beta_draws_weights = fit_bayes(model_log_odds_linear, data_probs)
+    beta_draws_noisy_weights = fit_bayes(model_log_odds_linear, data_noisy_weights)
+
+    # Bayesian prediction
+    
 
 
+    print(f"{lp_mle_max=}  {lp_mle_random=}  {lp_mle_probs=}  {lp_mle_weights=}  {lp_mle_noisy_weights=}")
+    print(f"{Pr_rate_max=}  {Pr_rate_random=}  {Pr_rate_probs=}  {Pr_rate_weights=}  {Pr_rate_noisy_weights=}")
+```
 
 # Further reading
 
-@stan2023 describes the Stan language and @stan2023 provides a user
-manual with descriptions of how to fit both crowdsourcing and logistic
-regression models.
+The Stan *Reference Manual,* by the @stan2023, describes the Stan
+programming language.  The *User's Guide,* by the @stan2023b,
+describes how to use the Stan language to code statistical models,
+including both hierarchical logistic regression and the Dawid and
+Skene crowdsourcing model.
 
 @dawid1979 first modeled crowdsourcing as noisy raters providing
 measurements conditioned on the true value.  In a binary task, each
@@ -721,4 +809,32 @@ restricted to estimation (training) software that can only handle
 deterministic categories, then the best thing to do is to sample the
 categories randomly given the probabilities.  Whatever you do, do not
 take the most probable category or use majority voting for
-crowdsourcing. 
+crowdsourcing.
+
+### Appendix: System settings
+
+The system and operating system are as follows.
+```{python}
+import sys
+import platform
+
+print("\nSystem")
+print(sys.version)
+
+print("\nOperating System")
+print(f"""  {platform.system() = }
+  {platform.release() = }
+  {platform.version() = }""")
+```
+
+The installed packages (i.e., the working set) is as follows.
+```{python}
+import pkg_resources
+
+print("\nInstalled packages:")
+for dist in pkg_resources.working_set:
+    print(dist)
+```
+
+
+```
