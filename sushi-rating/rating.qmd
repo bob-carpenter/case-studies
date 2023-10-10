@@ -80,11 +80,11 @@ short chain and a non-`DRAFT` setting with 4 chains and 500
 post-warmup iterations per chain (2000 posterior draws).
 
 ```{python}
-DRAFT = False
+DRAFT = True
 if DRAFT:
-    iter_warmup = 100
-    iter_sampling = 100
-    chains = 2
+    iter_warmup = 50
+    iter_sampling = 50
+    chains = 1
 else:
     iter_warmup = 500
     iter_sampling = 500
