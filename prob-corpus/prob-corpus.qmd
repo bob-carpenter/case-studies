@@ -545,13 +545,21 @@ def sq_error(u, v):
     return sum((u - v)**2)
 
 def fit_bayes(model, data_dict):
-    s = model.sample(data = data_dict, show_progress = False,
-    show_console = False, seed=12345, inits = 0)
-    return s.stan_variable("beta")
+    return model.sample(data = data_dict, show_progress = False,
+                        show_console = False, seed=12345, inits = 0)
+
+def fit_bayes_draws(model, data_dict):
+    fit = fit_bayes(model, data_dict)
+    return fit.stan_variable("beta")
 
 def fit_mle(model, data_dict):
     mle = model.optimize(data = data_dict, show_console = False, seed=12345)
     return mle.stan_variable("beta")
+
+def predict(test_data, fit, model_predict):
+    lp_draws_max = model_predict.generate_quantities(data = test_data, previous_fit = fit,
+                                                     show_console = False, seed = 12345)
+    return np.mean(lp_draws_max.stan_variable("log_p"))	/ test_data['y'].size
 
 def inv_logit(x):
     return 1 / (1 + exp(-x))
@@ -624,11 +632,11 @@ for m in range(M):
     df = add_row(df, mle_noisy, beta, "MLE", "noisy log odds")        
 
     # Bayesian
-    beta_draws_max = fit_bayes(model_logistic, data_max)
-    beta_draws_random = fit_bayes(model_logistic, data_random)
-    beta_draws_probs = fit_bayes(model_weighted_logistic, data_probs)
-    beta_draws_weights = fit_bayes(model_log_odds_linear, data_probs)
-    beta_draws_noisy_weights = fit_bayes(model_log_odds_linear, data_noisy_weights)
+    beta_draws_max = fit_bayes_draws(model_logistic, data_max)
+    beta_draws_random = fit_bayes_draws(model_logistic, data_random)
+    beta_draws_probs = fit_bayes_draws(model_weighted_logistic, data_probs)
+    beta_draws_weights = fit_bayes_draws(model_log_odds_linear, data_probs)
+    beta_draws_noisy_weights = fit_bayes_draws(model_log_odds_linear, data_noisy_weights)
     mean_max = np.zeros(D)
     mean_random = np.zeros(D)
     mean_probs = np.zeros(D)
@@ -750,19 +758,24 @@ for m in range(M):
     Pr_rate_weights = np.exp(lp_mle_weights / N_test)
     Pr_rate_noisy_weights = np.exp(lp_mle_noisy_weights / N_test)
 
+#    print(f"{lp_mle_max=}  {lp_mle_random=}  {lp_mle_probs=}  {lp_mle_weights=}  {lp_mle_noisy_weights=}")
+#    print(f"{Pr_rate_max=}  {Pr_rate_random=}  {Pr_rate_probs=}  {Pr_rate_weights=}  {Pr_rate_noisy_weights=}")
+
     # Bayesian fit
-    beta_draws_max = fit_bayes(model_logistic, data_max)
-    beta_draws_random = fit_bayes(model_logistic, data_random)
-    beta_draws_probs = fit_bayes(model_weighted_logistic, data_probs)
-    beta_draws_weights = fit_bayes(model_log_odds_linear, data_probs)
-    beta_draws_noisy_weights = fit_bayes(model_log_odds_linear, data_noisy_weights)
+    fit_max = fit_bayes(model_logistic, data_max)
+    fit_random = fit_bayes(model_logistic, data_random)
+    fit_probs = fit_bayes(model_weighted_logistic, data_probs)
+    fit_weights = fit_bayes(model_log_odds_linear, data_probs)
+    fit_noisy_weights = fit_bayes(model_log_odds_linear, data_noisy_weights)
 
     # Bayesian prediction
-    
-
-
-    print(f"{lp_mle_max=}  {lp_mle_random=}  {lp_mle_probs=}  {lp_mle_weights=}  {lp_mle_noisy_weights=}")
-    print(f"{Pr_rate_max=}  {Pr_rate_random=}  {Pr_rate_probs=}  {Pr_rate_weights=}  {Pr_rate_noisy_weights=}")
+    test_data = {'D': D, 'N': N_test, 'x': x_test, 'y': y_test}
+    elpd_max = predict(test_data, fit_max, model_predict)
+    elpd_random = predict(test_data, fit_random, model_predict)
+    elpd_probs = predict(test_data, fit_probs, model_predict)
+    elpd_weights = predict(test_data, fit_weights, model_predict)
+    elpd_noisy_weights = predict(test_data, fit_noisy_weights, model_predict)
+    print(f"{elpd_max=}  {elpd_random=}  {elpd_probs=}  {elpd_weights=}  {elpd_noisy_weights=}")
 ```
 
 # Further reading
