@@ -61,13 +61,13 @@ The second result is that it is even better to use the category
 probabilities directly.  This is a direct consequence of the
 Rao-Blackwell theorem in the Bayesian setting.
 
-These results hold for both Bayesian posterior mean estimators and
+These results hold for both Bayesian posterior mean estimators and the
 penalized maximum likelihood estimators.  The Bayesian posterior mean
 estimator minimizes expected square error, which is borne out
 experimentally when the data is generated probabilistically according
 to the generative model or weighted logistic regression training is
 used.  Under the other data generation regimes, the results are
-indistinguishable. 
+indistinguishable.
 
 
 # Logistic regression
@@ -201,7 +201,8 @@ $$
 p(\beta \mid y) \propto p(y \mid \beta) \cdot p(\beta).
 $$
 We use the notation $g$ to indicate that it is an unnormalized density.
-We integrate over the objective function to perform Bayesian inference.
+We integrate over the objective function to perform Bayesian
+inference.
 
 ## Frequentist penalty function
 
@@ -398,16 +399,17 @@ category.
 ## Bayesian posterior predictive inference
 
 Suppose the training data is a sequence of pairs $(x_n, y_n)$ where
-$x_n \in \mathbb{R}^D$ and $y_n \in \{ 0, 1 \}$ for $n \in 1{:}N.$.
+$x_n \in \mathbb{R}^D$ and $y_n \in \{ 0, 1 \}$ for $n \in 1{:}N,$ and
+$\beta \in \mathbb{R}^D.$
 Now suppose there are new items with covariates $\widetilde{x}_n$ for
-$n \in 1{:}\widetilde{N}.$  For each new item $\widetilde{x}_n,$ the
+$n \in 1{:}\widetilde{N}.$  For each new covariate vector $\widetilde{x}_n,$ the
 prediction for an outcome $\widetilde{y}_n \in \{ 0, 1 \}$ is given by
 the posterior predictive probability mass function,
 \begin{align*}
-p(\widetilde{y} \mid \widetilde{x}_n, x, y)
-&= \mathbb{E}\!\left[\widetilde{Y} \,\big|\, \widetilde{x}_n, x, y\right]
+p(\widetilde{y} \mid \widetilde{x}, x, y)
+&= \mathbb{E}\!\left[\widetilde{Y} \,\big|\, \widetilde{x}, x, y\right]
 \\[4pt]
-&= \int_{\mathbb{R}^D} p(\widetilde{y} \mid \beta) \cdot p(\beta \mid
+&= \int_{\mathbb{R}^D} p(\widetilde{y} \mid \widetilde{x}, \beta) \cdot p(\beta \mid
 x, y) \ \textrm{d}\beta.
 \end{align*}
 
@@ -417,11 +419,52 @@ $$
 $$
 for $m \in 1{:}M,$ this quantity can be estimated as
 $$
-p(\widetilde{y} \mid \widetilde{x}_n, x, y)
+p(\widetilde{y} \mid \widetilde{x}, x, y)
 \approx
-\frac{1}{M} \sum_{m = 1}^M p\!\left(\widetilde{y}_n \,\big|\, \widetilde{x}_n, 
+\frac{1}{M} \sum_{m = 1}^M p\!\left(\widetilde{y} \,\big|\, \widetilde{x}, 
 \beta^{(m)}\right).
 $$
+
+Because of issues with floating-point numbers on computers, we have to
+guard against underflow in density functions.  Instead of calculating
+$p(\widetilde{y} \mid \widetilde{x}, \beta^{(m)}),$
+we instead calculate
+$\log p(\widetilde{y} \mid, \widetilde{x}, \beta^{(m)}),$
+which allows us to calculate the final result on the log scale as
+\begin{align*}
+\log p(\widetilde{y} \mid \widetilde{x}, x, y)
+&\approx
+\log \frac{1}{M} \sum_{m = 1}^M p\!\left(\widetilde{y} \,\big|\, \widetilde{x}, 
+\beta^{(m)}\right)
+\\[4pt]
+&= -\log M + \log \sum_{m = 1}^M p\!\left(\widetilde{y} \,\big|\, \widetilde{x}, 
+\beta^{(m)}\right)
+\\[4pt]
+&= -\log M + \log \sum_{m = 1}^M \exp\!\left(\log \ p\!\left(\widetilde{y} \,\big|\, \widetilde{x}, 
+\beta^{(m)}\right)\right)
+\\[4pt]
+&= -\log M + \textrm{logSumExp}_{m=1}^M \log \ p\!\left(\widetilde{y} \,\big|\, \widetilde{x}, 
+\beta^{(m)}\right).
+\end{align*}
+
+The log-sum-of-exponentials function can be implemented in an
+arithmetically stable way for a vector $v \in \mathbb{R}^M$ as
+\begin{align*}
+\textrm{logSumExp}_{m=1}^M v_m
+&= \log \sum_{m = 1}^M \ \exp(v_m)
+\\
+&= \max(v) + \log \sum_{j=1}^K \exp(v_j - \max(v)).
+\end{align*}
+The stability follows from never applying $\exp()$ to a positive
+number combined with pulling the leading digits out with $\max(v).$
+
+We will be reporting an estimate of the expected log posterior density
+per item, which for $y \in \{0, 1\}^N$ is 
+$$
+\textrm{ELPD} = \frac{\log p(\widetilde{y} \mid \widetilde{x}, x, y)}
+                     {\widetilde{N}}.
+$$		     
+
 
 ## Frequentist plug-in inference
 
@@ -434,9 +477,9 @@ $$
 $$
 which is plugged in for prediction,
 $$
-p(\widetilde{y} \mid \widetilde{x}_n, x, y)
+p(\widetilde{y} \mid \widetilde{x}, x, y)
 \approx
-p(\widetilde{y} \mid \widetilde{x}_n, \beta^*).
+p(\widetilde{y} \mid \widetilde{x}, \beta^*).
 $$
 
 # Simulation-based evaluation
@@ -556,18 +599,24 @@ def fit_mle(model, data_dict):
     mle = model.optimize(data = data_dict, show_console = False, seed=12345)
     return mle.stan_variable("beta")
 
-def predict(test_data, fit, model_predict):
+def elpd(test_data, fit, model_predict):
     lp_draws_max = model_predict.generate_quantities(data = test_data, previous_fit = fit,
                                                      show_console = False, seed = 12345)
-    return np.mean(lp_draws_max.stan_variable("log_p"))	/ test_data['y'].size
+    return sp.special.logsumexp(lp_draws_max.stan_variable("log_p")) / test_data['y'].size
 
 def inv_logit(x):
     return 1 / (1 + exp(-x))
 
 def add_row(df, beta_hat, beta, estimator, data):
     return pd.concat([df, pd.DataFrame({'error': (sq_error(beta_hat, beta), ),
-                                            'estimator': (estimator, ),
-                                            'data': (data, )})],
+                                        'estimator': (estimator, ),
+                                        'data': (data, )})],
+                         ignore_index=True)
+
+def add_elpd(df, elpd, estimator, data):
+    return pd.concat([df, pd.DataFrame({'error': (elpd, ),
+                                        'estimator': (estimator, ),
+                                        'data': (data, )})],
                          ignore_index=True)
 ```
 
@@ -670,8 +719,8 @@ def summary(x):
         'max': np.max(x)
     })
 
-summary = df.groupby(['estimator','data'])['error'].apply(summary).unstack()
-print(summary.round(1))
+summary_table = df.groupby(['estimator','data'])['error'].apply(summary).unstack()
+print(summary_table.round(1))
 ```
 
 The results can also be presented via histograms faceted by data type
@@ -717,6 +766,7 @@ predictive accuracy rather than estimation accuracy.
 ```{python}
 N = 200
 N_test = 100
+df_predict = pd.DataFrame({'error': (), 'estimator': (), 'data': ()})
 for m in range(M):
     beta = np.random.normal(0, 1, D)
 
@@ -752,14 +802,17 @@ for m in range(M):
     lp_mle_weights = sp.stats.bernoulli.logpmf(y_test, inv_logit(np.dot(x_test, mle_weights))).sum()
     lp_mle_noisy_weights = sp.stats.bernoulli.logpmf(y_test, inv_logit(np.dot(x_test, mle_noisy))).sum()
 
-    Pr_rate_max = np.exp(lp_mle_max / N_test)
-    Pr_rate_random = np.exp(lp_mle_random / N_test)
-    Pr_rate_probs = np.exp(lp_mle_probs / N_test)
-    Pr_rate_weights = np.exp(lp_mle_weights / N_test)
-    Pr_rate_noisy_weights = np.exp(lp_mle_noisy_weights / N_test)
+    log_Pr_rate_max = lp_mle_max / N_test
+    log_Pr_rate_random = lp_mle_random / N_test
+    log_Pr_rate_probs = lp_mle_probs / N_test
+    log_Pr_rate_weights = lp_mle_weights / N_test
+    log_Pr_rate_noisy_weights = lp_mle_noisy_weights / N_test
 
-#    print(f"{lp_mle_max=}  {lp_mle_random=}  {lp_mle_probs=}  {lp_mle_weights=}  {lp_mle_noisy_weights=}")
-#    print(f"{Pr_rate_max=}  {Pr_rate_random=}  {Pr_rate_probs=}  {Pr_rate_weights=}  {Pr_rate_noisy_weights=}")
+    df_predict = add_elpd(df_predict, log_Pr_rate_max, "MLE", "most probable")
+    df_predict = add_elpd(df_predict, log_Pr_rate_random, "MLE", "random")
+    df_predict = add_elpd(df_predict, log_Pr_rate_probs, "MLE", "weighted")
+    df_predict = add_elpd(df_predict, log_Pr_rate_weights, "MLE", "log odds")
+    df_predict = add_elpd(df_predict, log_Pr_rate_noisy_weights, "MLE", "noisy log odds")
 
     # Bayesian fit
     fit_max = fit_bayes(model_logistic, data_max)
@@ -770,12 +823,26 @@ for m in range(M):
 
     # Bayesian prediction
     test_data = {'D': D, 'N': N_test, 'x': x_test, 'y': y_test}
-    elpd_max = predict(test_data, fit_max, model_predict)
-    elpd_random = predict(test_data, fit_random, model_predict)
-    elpd_probs = predict(test_data, fit_probs, model_predict)
-    elpd_weights = predict(test_data, fit_weights, model_predict)
-    elpd_noisy_weights = predict(test_data, fit_noisy_weights, model_predict)
-    print(f"{elpd_max=}  {elpd_random=}  {elpd_probs=}  {elpd_weights=}  {elpd_noisy_weights=}")
+    elpd_max = elpd(test_data, fit_max, model_predict)
+    elpd_random = elpd(test_data, fit_random, model_predict)
+    elpd_probs = elpd(test_data, fit_probs, model_predict)
+    elpd_weights = elpd(test_data, fit_weights, model_predict)
+    elpd_noisy_weights = elpd(test_data, fit_noisy_weights, model_predict)
+    df_predict = add_elpd(df_predict, elpd_max, "Bayes", "most probable")
+    df_predict = add_elpd(df_predict, elpd_random, "Bayes", "random")
+    df_predict = add_elpd(df_predict, elpd_probs, "Bayes", "weighted")
+    df_predict = add_elpd(df_predict, elpd_weights, "Bayes", "log odds")
+    df_predict = add_elpd(df_predict, elpd_noisy_weights, "Bayes", "noisy log odds")
+```
+
+After building up the results, we can summarize the results using a
+pandas one-liner.
+
+```{python}
+# pd.set_option('display.max_rows', None)
+# print(df_predict)
+summary_table_predict = df_predict.groupby(['estimator','data'])['error'].apply(summary).unstack()
+print(summary_table_predict.round(2))
 ```
 
 # Further reading
@@ -794,22 +861,27 @@ category to each item.  It is straightforward to extend Dawid and
 Skene's model to a Bayesian hierarchical model as shown in the "Latent
 discrete parameters" chapter of the *Stan User's Guide.*
 
-@raykar2010 is the first example of jointly training a classifier and
-crowdsourcing model.  The maximum likelihood approach the authors
-employ can be easily extended to a Bayesian hierarchical model.
+@smyth1994 is he first example of which I'm aware of jointly training
+a classifier and a crowdsourcing model.  @raykar2010 performs joint
+training in a logistic regression setting using Dawid and Skene's
+model.  There is a rich literature after these two papers and there is
+a parallel literature in the epidemiology literature on assessing
+diagnostic tests without a gold standard dating back at least to the
+1990s.  The maximum likelihood approach the authors employ can be
+easily extended to a Bayesian hierarchical model (for example, by
+@paun2018).
 
-@passonneau2014 use a million crowdsourced ratings over forty thousand
-items for word sense disambiguation in natural language processing.
-This paper provides a high-level motivation for rating models over
-weighted voting approaches and inter-annotator agreement measures.
+@passonneau2014 provide a high-level motivation for rating models over
+weighted voting approaches and inter-annotator agreement measures and
+include an analysis of a large-scale open-access data set (1M ratings).
 It also describes how the model handles spammy and adversarial
 annotators, discusses identifiability issues, and suggests a method of
 active learning based on the model.  Even with 20 raters per item,
-the ratings of some items did not converge, which further undercuts
+the ratings of some items did not converge, which further motivates
+the use of probabilistic training.
 
 @gneiting2007 and @gneiting2007b provide an excellent overview of
 proper scoring metrics and calibrated prediction, respectively.
-
 
 
 # Conclusions
