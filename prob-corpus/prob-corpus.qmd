@@ -633,11 +633,11 @@ model_predict = csp.CmdStanModel(stan_file = "logistic-regression-predict.stan")
 Fourth, set all the constants determining sizes for the simulation.
 
 ```{python}
-D = 11        # number of predictors including intercept
-N = 100       # number of data points used to train
+D = 21        # number of predictors including intercept
+N = 200       # number of data points used to train
 rho = 0.9     # correlation of predictor RW covariance
-N_test = 100  # number of test items
-M = 10        # number of simulation runs
+N_test = 500  # number of test items
+M = 100        # number of simulation runs
 ```
 
 Fifth, allocate a pandas data frame to store the results, then collect
@@ -764,8 +764,6 @@ The evaluation follows the earlier evaluation, only we now measure
 predictive accuracy rather than estimation accuracy.  
 
 ```{python}
-N = 200
-N_test = 100
 df_predict = pd.DataFrame({'error': (), 'estimator': (), 'data': ()})
 for m in range(M):
     beta = np.random.normal(0, 1, D)
@@ -858,18 +856,15 @@ measurements conditioned on the true value.  In a binary task, each
 rater's sensitivity and specificity is estimated, as is the prevalence
 of successful (1) outcomes, which allows a probabilistic assignment of
 category to each item.  It is straightforward to extend Dawid and
-Skene's model to a Bayesian hierarchical model as shown in the "Latent
-discrete parameters" chapter of the *Stan User's Guide.*
+Skene's model to a Bayesian hierarchical model as shown by @paun2018
+and in the "Latent discrete parameters" chapter of the *Stan User's
+Guide.*  There is a rich literature on similar models in epidemiology,
+educational testing, and sociology.
 
 @smyth1994 is he first example of which I'm aware of jointly training
 a classifier and a crowdsourcing model.  @raykar2010 performs joint
 training in a logistic regression setting using Dawid and Skene's
-model.  There is a rich literature after these two papers and there is
-a parallel literature in the epidemiology literature on assessing
-diagnostic tests without a gold standard dating back at least to the
-1990s.  The maximum likelihood approach the authors employ can be
-easily extended to a Bayesian hierarchical model (for example, by
-@paun2018).
+model.  
 
 @passonneau2014 provide a high-level motivation for rating models over
 weighted voting approaches and inter-annotator agreement measures and
