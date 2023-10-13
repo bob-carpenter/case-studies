@@ -44,30 +44,50 @@ bibliography: references.bib
 
 # Introduction
 
-This short technical note lays out several approaches to training a
-classifier when the probability of each item's outcome is known. The
-motivating example is the probability assigned by a model of data
-rating (also known as coding, annotation, labeling, and crowdsourcing),
-such as that of @dawid1979.
+This short technical note evaluates several approaches to training a
+logistic regression classifier from a probabilistic corpus in which
+the probabilities of each item's outcome are known either exactly or
+approximately.  The motivating example is the probability estimated by
+a model of data rating (also known as coding, annotation, labeling,
+and crowdsourcing), such as that of @dawid1979.
 
-This note presents two results.  The first result is that when
-creating a corpus, it is more effective to sample the category for
-each item given its probability distribution than it is to assign it
-the most probable category. Approaches to crowdsourcing using a
-majority vote approach are instances of the suboptimal most-probable
-strategy.
+The first result is that to create a corpus with a discrete outcome
+per item, it is more effective to sample the category for each item
+given its probability distribution than it is to assign it the most
+probable category. Approaches to crowdsourcing using a majority vote
+approach are instances of the suboptimal most-probable strategy.
 
 The second result is that it is even better to use the category
-probabilities directly.  This is a direct consequence of the
+probabilities directly, training the classifier with all categories
+weighted by their probabilities. This result follows from the
 Rao-Blackwell theorem in the Bayesian setting.
 
-These results hold for both Bayesian posterior mean estimators and the
-penalized maximum likelihood estimators.  The Bayesian posterior mean
-estimator minimizes expected square error, which is borne out
-experimentally when the data is generated probabilistically according
-to the generative model or weighted logistic regression training is
-used.  Under the other data generation regimes, the results are
-indistinguishable.
+The third result is that the best approach is to transform the
+probabilities to their log odds and then fit a linear regression.
+This result follows because logistic regression implies a log odds
+link and binomial sampling.
+
+Evaluation is in terms of two proper scoring metrics, square error in
+parameter estimation and held-out data log likelihood.  Two widely
+used estimators are compared, a Bayesian posterior mean estimator and
+a frequentist penalized maximum likelihood estimator.  Bayesian
+posterior predictive inference is also compared to inference based by
+plugging in a frequentist point estimate.
+
+With simulated data, all three results hold for parameter estimation
+and predictive inference with both Bayesian and frequentist
+approaches.  In situations where the data follows the model's data
+generating process, the Bayesian approach modestly outperforms the
+frequentist approach.  This last result is not surprising given that
+Bayesian estimates are designed to minimize expected square error.
+
+# Overview
+
+First, the logistic regression data generating process is presented.
+
+In the next section, we simulate data according to the five schemes we
+will be evaluating.
+
 
 
 # Logistic regression
@@ -94,6 +114,15 @@ The definition of the binomial distribution implies
 $$
 \Pr[Y_n = 1] = \textrm{logit}^{-1}(x_n \cdot \beta).
 $$
+
+In machine learning, logistic regression models are often called
+"discriminative" because they do not typically provide a
+data-generating process for the covariates.  The reason for this is
+that the data-generating process for outcomes is independent of the
+data-generating process for covariates, allowing us to restrict
+attention to simulating the outcomes.  It is always possible to
+conjoin a data-generating process for the covariates---there is an
+example in the next section.
 
 # Data simulation
 
@@ -561,6 +590,8 @@ import numpy as np
 import pandas as pd
 import plotnine as pn
 import cmdstanpy as csp
+
+pd.set_option('display.max_rows', None)  # show whole pandas data frames
 csp.utils.get_logger().setLevel(logging.ERROR)  # only log errors
 
 np.random.seed(12345)   # change seed for fresh simulation
@@ -589,6 +620,7 @@ def sq_error(u, v):
 
 def fit_bayes(model, data_dict):
     return model.sample(data = data_dict, show_progress = False,
+                        chains=1, iter_warmup=2000, iter_sampling=2000,
                         show_console = False, seed=12345, inits = 0)
 
 def fit_bayes_draws(model, data_dict):
@@ -596,13 +628,16 @@ def fit_bayes_draws(model, data_dict):
     return fit.stan_variable("beta")
 
 def fit_mle(model, data_dict):
-    mle = model.optimize(data = data_dict, show_console = False, seed=12345)
+    mle = model.optimize(data = data_dict, show_console = False,
+                         seed=12345)
     return mle.stan_variable("beta")
 
 def elpd(test_data, fit, model_predict):
-    lp_draws_max = model_predict.generate_quantities(data = test_data, previous_fit = fit,
-                                                     show_console = False, seed = 12345)
-    return sp.special.logsumexp(lp_draws_max.stan_variable("log_p")) / test_data['y'].size
+    predict_fit = model_predict.generate_quantities(
+         data = test_data,  previous_fit = fit,
+         show_console = False,  seed = 12345)
+    log_p_draws = predict_fit.stan_variable("log_p"))
+    return (sp.special.logsumexp(log_p_draws) - np.log(log_p_draws.size)) / test_data['y'].size
 
 def inv_logit(x):
     return 1 / (1 + exp(-x))
@@ -614,7 +649,7 @@ def add_row(df, beta_hat, beta, estimator, data):
                          ignore_index=True)
 
 def add_elpd(df, elpd, estimator, data):
-    return pd.concat([df, pd.DataFrame({'error': (elpd, ),
+    return pd.concat([df, pd.DataFrame({'ELPD': (elpd, ),
                                         'estimator': (estimator, ),
                                         'data': (data, )})],
                          ignore_index=True)
@@ -633,11 +668,11 @@ model_predict = csp.CmdStanModel(stan_file = "logistic-regression-predict.stan")
 Fourth, set all the constants determining sizes for the simulation.
 
 ```{python}
-D = 21        # number of predictors including intercept
-N = 200       # number of data points used to train
-rho = 0.9     # correlation of predictor RW covariance
-N_test = 500  # number of test items
-M = 100        # number of simulation runs
+D = 11         # number of predictors including intercept
+N = 50       # number of data points used to train
+rho = 0.9      # correlation of predictor RW covariance
+N_test = 20  # number of test items
+M = 5         # number of simulation runs
 ```
 
 Fifth, allocate a pandas data frame to store the results, then collect
@@ -674,11 +709,11 @@ for m in range(M):
     mle_probs = fit_mle(model_weighted_logistic, data_probs)
     mle_weights = fit_mle(model_log_odds_linear, data_probs)
     mle_noisy = fit_mle(model_log_odds_linear, data_noisy_weights)
-    df = add_row(df, mle_max, beta, "MLE", "most probable")        
+    df = add_row(df, mle_max, beta, "MLE", "max prob")        
     df = add_row(df, mle_random, beta, "MLE", "random")        
     df = add_row(df, mle_probs, beta, "MLE", "weighted")        
     df = add_row(df, mle_weights, beta, "MLE", "log odds")
-    df = add_row(df, mle_noisy, beta, "MLE", "noisy log odds")        
+    df = add_row(df, mle_noisy, beta, "MLE", "noisy odds")        
 
     # Bayesian
     beta_draws_max = fit_bayes_draws(model_logistic, data_max)
@@ -697,11 +732,11 @@ for m in range(M):
         mean_probs[d] = np.mean(beta_draws_probs[:, d])
         mean_weights[d] = np.mean(beta_draws_weights[:, d])
         mean_noisy[d] = np.mean(beta_draws_noisy_weights[:, d])
-    df = add_row(df, mean_max, beta, "Bayes", "most probable")        
+    df = add_row(df, mean_max, beta, "Bayes", "max prob")        
     df = add_row(df, mean_random, beta, "Bayes", "random")        
     df = add_row(df, mean_probs, beta, "Bayes", "weighted")        
     df = add_row(df, mean_weights, beta, "Bayes", "log odds")        
-    df = add_row(df, mean_noisy, beta, "Bayes", "noisy log odds")
+    df = add_row(df, mean_noisy, beta, "Bayes", "noisy odds")
 ```
 
 Finally, print the results as a table with a custom reporter for
@@ -723,15 +758,16 @@ summary_table = df.groupby(['estimator','data'])['error'].apply(summary).unstack
 print(summary_table.round(1))
 ```
 
-The results can also be presented via histograms faceted by data type
-and estimator.
+Here's a box and whisker plot of the results.
 
 ```{python}
-plot = (pn.ggplot(df, pn.aes(x = 'error'))
-    + pn.geom_histogram(bins = 10, color='white', size=0.1)
-    + pn.facet_grid('estimator ~ data', scales="free_x")
-    + pn.scale_x_log10())
-print(plot)
+plot_whisker = ( pn.ggplot(df, pn.aes(x='data', y='error', fill='data'))
+    + pn.geom_boxplot()
+    + pn.facet_grid('. ~ estimator')
+    + pn.aes(group='data')
+    + pn.scale_y_log10()
+    + pn.theme(figure_size=(10, 5)) )
+print(plot_whisker)
 ```
 
 The simulations clearly show that training with logit-transformed
@@ -748,7 +784,7 @@ trails the Bayesian estimator.
 ## Evaluation of predictive inference
 
 For evaluation of both fully Bayesian and plug-in inference, the
-followin Stan model suffices.
+following Stan model suffices.
 
 ```{.stan include="logistic-regression-predict.stan"
           filename="logistic-regression-predict.stan"}
@@ -764,7 +800,7 @@ The evaluation follows the earlier evaluation, only we now measure
 predictive accuracy rather than estimation accuracy.  
 
 ```{python}
-df_predict = pd.DataFrame({'error': (), 'estimator': (), 'data': ()})
+df_predict = pd.DataFrame({'ELPD': (), 'estimator': (), 'data': ()})
 for m in range(M):
     beta = np.random.normal(0, 1, D)
 
@@ -806,11 +842,11 @@ for m in range(M):
     log_Pr_rate_weights = lp_mle_weights / N_test
     log_Pr_rate_noisy_weights = lp_mle_noisy_weights / N_test
 
-    df_predict = add_elpd(df_predict, log_Pr_rate_max, "MLE", "most probable")
+    df_predict = add_elpd(df_predict, log_Pr_rate_max, "MLE", "max prob")
     df_predict = add_elpd(df_predict, log_Pr_rate_random, "MLE", "random")
     df_predict = add_elpd(df_predict, log_Pr_rate_probs, "MLE", "weighted")
     df_predict = add_elpd(df_predict, log_Pr_rate_weights, "MLE", "log odds")
-    df_predict = add_elpd(df_predict, log_Pr_rate_noisy_weights, "MLE", "noisy log odds")
+    df_predict = add_elpd(df_predict, log_Pr_rate_noisy_weights, "MLE", "noisy odds")
 
     # Bayesian fit
     fit_max = fit_bayes(model_logistic, data_max)
@@ -826,22 +862,34 @@ for m in range(M):
     elpd_probs = elpd(test_data, fit_probs, model_predict)
     elpd_weights = elpd(test_data, fit_weights, model_predict)
     elpd_noisy_weights = elpd(test_data, fit_noisy_weights, model_predict)
-    df_predict = add_elpd(df_predict, elpd_max, "Bayes", "most probable")
+    df_predict = add_elpd(df_predict, elpd_max, "Bayes", "max prob")
     df_predict = add_elpd(df_predict, elpd_random, "Bayes", "random")
     df_predict = add_elpd(df_predict, elpd_probs, "Bayes", "weighted")
     df_predict = add_elpd(df_predict, elpd_weights, "Bayes", "log odds")
-    df_predict = add_elpd(df_predict, elpd_noisy_weights, "Bayes", "noisy log odds")
+    df_predict = add_elpd(df_predict, elpd_noisy_weights, "Bayes", "noisy odds")
 ```
 
 After building up the results, we can summarize the results using a
-pandas one-liner.
+pandas one-liner.  Here, higher ELPD is better.
 
 ```{python}
-# pd.set_option('display.max_rows', None)
-# print(df_predict)
-summary_table_predict = df_predict.groupby(['estimator','data'])['error'].apply(summary).unstack()
+summary_table_predict = df_predict.groupby(['estimator','data'])['ELPD'].apply(summary).unstack()
 print(summary_table_predict.round(2))
 ```
+
+And here's the plot, where larger numbers are also better.
+
+
+```{python}
+plot_whisker_predict = (
+    pn.ggplot(df_predict, pn.aes(x='data', y='ELPD', fill='data'))
+    + pn.geom_boxplot()
+    + pn.facet_grid('. ~ estimator')
+    + pn.aes(group='data')
+    + pn.theme(figure_size=(10, 5)) )
+print(plot_whisker_predict)
+```
+
 
 # Further reading
 
@@ -914,7 +962,4 @@ import pkg_resources
 print("\nInstalled packages:")
 for dist in pkg_resources.working_set:
     print(dist)
-```
-
-
 ```
