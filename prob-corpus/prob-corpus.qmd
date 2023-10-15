@@ -665,11 +665,13 @@ model_predict = csp.CmdStanModel(stan_file = "logistic-regression-predict.stan")
 Fourth, set all the constants determining sizes for the simulation.
 
 ```{python}
-D = 21          # number of predictors including intercept
-N = 1000        # number of data points used to train
-rho = 0.9       # correlation of predictor RW covariance
-N_test = 1000   # number of test items
-M = 100         # number of simulation runs
+# D = 11, N = 500, rho = 0.9 good
+
+D = 32            # number of predictors including intercept
+N = 1024          # number of data points used to train
+rho = 0.9         # correlation of predictor RW covariance
+N_test = 1024     # number of test items
+M = 32            # number of simulation runs
 ```
 
 Fifth, allocate a pandas data frame to store the results, then collect
