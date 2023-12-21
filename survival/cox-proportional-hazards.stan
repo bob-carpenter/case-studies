@@ -13,8 +13,10 @@ parameters {
   vector[K] beta;          // slopes (no intercept)
 }
 model {
-  beta ~ normal(0, 2);                     // prior
+  // prior
+  beta ~ normal(0, 2);
 
+  // likelihood
   vector[N] log_theta = x * beta;
   vector[N_c] log_theta_c = x_c * beta;
   real log_denom = log_sum_exp(log_theta_c);
