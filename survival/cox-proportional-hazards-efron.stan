@@ -55,7 +55,9 @@ model {
     log_denom_lhs = log_sum_exp(log_denom_lhs, log_sum_exp(log_theta[start:end]));
     vector[len] diff;
     for (ell in 1:len) {
-      diff[ell] = log_diff_exp(log_denom_lhs, log(ell - 1) - log(len) + log_sum_exp(log_theta[start:end]));
+      diff[ell] = log_diff_exp(log_denom_lhs,
+			       log(ell - 1) - log(len)
+			       + log_sum_exp(log_theta[start:end]));
     }
     target += numerator - sum(diff);
   }
