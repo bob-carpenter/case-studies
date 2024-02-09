@@ -8,16 +8,16 @@ data {
 }
 parameters {
   real logit_prev;
-  vector[J] logit_sens;
-  vector[J] logit_spec;
+  vector<lower=0>[J] logit_sens;
+  vector<lower=0>[J] logit_spec;
   vector[I] logit_diff;
 }
 model {
   // prior
   logit_prev ~ logistic(0, 1);
-  logit_sens ~ logistic(0, 1);
-  logit_spec ~ logistic(0, 1);
-  logit_diff ~ logistic(0, 1);
+  logit_sens ~ logistic(2, 2);
+  logit_spec ~ logistic(2, 2);
+  logit_diff ~ logistic(0, 0.5);
   sum(logit_diff) ~ normal(0, 1);  // soft center
 
   // likelihood
