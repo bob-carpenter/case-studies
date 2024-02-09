@@ -11,12 +11,11 @@ y = df.pivot(index='item', columns='coder', values='response').to_numpy()
 I, J = np.shape(y)
 data = {'I': I, 'J': J, 'y': y}
 init = { 'pi': -1.5,
-         'theta': np.full((2, J), 2.0),
          'beta': np.full(I, 0.0) }
-model = csp.CmdStanModel(stan_file = 'original-1pl.stan')
+model = csp.CmdStanModel(stan_file = '../stan/original-1pl.stan')
 sample = model.sample(data = data, show_console = True, refresh = 1,
                           iter_warmup=200, iter_sampling=200,
-                          chains = 1, inits = init,
+                          chains = 2, inits = init,
                           seed = 92584)
 sample.summary()
 
