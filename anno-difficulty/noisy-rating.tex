@@ -1,0 +1,324 @@
+\documentclass[10pt]{article}
+
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{palatino}
+\usepackage{mathpazo}
+
+\renewcommand{\baselinestretch}{1.05}
+\newcommand{\range}[2]{#1{:}#2}
+\newcommand{\rng}[1]{\range{1}{#1}}
+\newcommand{\transpose}{^{\top}}
+
+\title{Measurement error models for categorical coding
+  of heterogeneous items}
+
+\author{Bob Carpenter \\ Center for Computational Mathematics \\
+  Flatiron Institute \\ New York, NY}
+
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\subsection*{Absract}
+
+We introduce a class of generative models for the data annotation
+process. For example, words might be coded for part of speech, X-rays
+for severity of tumor, or doctor's visits for ICD-10 codes. Our
+inferential goals are to learn about the data items being rated
+individually and as a group, learn about the coders individually and
+as a group, as well as to learn a classifier based on covariates.
+These models treat coders like diagnostic medical tests in that they
+supply a noisy and perhaps biased measurement of an underlying
+categorical variable of interest. These models also treat coders like
+students taking tests, with items being adjusted for difficulty,
+discriminativeness, and guessability. In all cases, parameters are
+given hierarchical priors over the groups of coders or items. With
+binary ratings and unbiased coders, these models reduct to a hierarchy
+of item-response theory models. With itemsof equal difficulty,
+discriminative, and guessability, these models reduce to Dawid and
+Skene's model of noisy ratings.
+\\[12pt]
+{\textit{Keywords:} data rating, data coding, data annotation,
+  diagnostic testing, noisy measurement, generalized linear model,
+  multilevel model, partial pooling, item-response theory, Bayesian
+  inference, partial pooling}
+
+
+\section{Data structure}
+
+Our data consists of ratings for a set of $I$ items provided by a set
+of $J$ coders. Not every item needs to be coded by every coder. There
+is no requirement for balance in the number of items per coder or
+number of coders per item. This allows us to use the same model for
+data patterns ranging from randomly crowdsourced data to carefully
+designed survey panels.
+
+Each item $i \in I$ has a (row) vector $x_i \in \mathbb{R}^P$ of
+predictors associated with it. The full predictor matrix $x$ is thus
+$I \times P$ matrix, with a row for each item and a column for each
+predictor. These will be used in a regression model of category
+prevalence, which may also be used as a probabilistic item classifier.
+
+A fundamental assumption of all of our models is that each item
+belongs to exactly one of $K$ categories. Coding problems allowing
+multiple labels can often be decomposed into a sequence of binary
+coding problems, one for each possible label.
+
+The coding data is a sequence of $N$ observations, each of which
+consists of a a coder identifier $j_n \in \rng{J}$, item identifier
+$i_n \in \rng{I}$, and code $y_n \in \rng{K}$ supplied by the coder
+for the item. Although nothing prevents the same coder from coding the
+same item multiple times, such a situation is likely to violate the
+conditional independence assumptions of our models.
+
+\section{The Models}
+
+\subsection*{Item prevalence and classification}
+
+For each item $i \in \rng{I}$, Let $z_i \in \rng{K}$ be its true, but
+unknown category.  Each item's category is generated according to a
+multivariate logistic regression based on a $K \times P$ matrix
+$\beta$ of regression coefficients, as
+\[
+  z_n \sim \textrm{categorical}(\textrm{softmax}(\beta \cdot x_i\transpose)),
+\]
+where
+\[
+  \textrm{softmax}(v) =
+  \frac
+  {\displaystyle \exp(v)}
+  {\displaystyle \textrm{sum}(\exp(v))}.
+\]
+The softmax function maps an arbitrary vector to a simplex of the same
+dimension (i.e., a vector with non-negative entries that sums to one).
+Where desired, intercepts are coded as a column of 1 values in the data matrix $x$.
+
+Given a new item with a $P$-vector of predictors $\tilde{x}_i$,
+$\textrm{softmax}(\beta \cdot \tilde{x}_i\transpose)$ constitutes a
+probabilistic prediction for the new item, with the predicted
+probability of category $k$ given by
+$\textrm{softmax}(\beta \cdot \tilde{x}_i)_k$.
+
+\subsection*{Complete and conditional likelihood}
+
+The complete data consists of the pair $(y, z)$ of codes and true
+categories.  In reality, only the codes $y$ are observed, so the 
+latent true categories $z$ are treated as missing data.  
+The complete data likelihood factors by item as
+\[
+  p(y, z \mid x, \beta, \theta)
+  = p(z \mid x, \beta) \cdot p(y \mid z, \theta)
+\]
+with the predictors $x$ and regression coefficients $\beta$ needed for
+only the true-category distribution. Last section provided $p(z \mid
+x, \beta)$ and this section introduces the conditional data likelihood
+$p(y \mid z, \theta)$ of codes given the true category and other model
+parameters. 
+
+We introduce a hierarchy of models following in the tradition of
+item-response theory (IRT) models.  These models have developed a
+nomenclature based on the inclusion of difficulty (1PL),
+discriminativeness (2PL), and guessing (3PL) parameters for the items
+being rated.  Additive parameters will be on the log odds scale and
+multiplicative parameters will be scale-free.
+
+\subsubsection*{Coder component: Accuracy and bias}
+
+The first model involves effects for coder accuracy and bias,
+represeented as a $J \times K \times K$ tensor $\alpha$.  Codes are then
+generated based on the coder response matrices, 
+\[
+  y_n \sim \textrm{categorical}(\textrm{softmax}(\alpha_{j_n,\, z_{i[n]}}).
+\]
+The index $k = z_{i[n]}$ is the true category of of the item being coded,
+and the $K$-vector $\alpha_{j_n, k}$ represents the response of coder $j_n$ to
+items of true category $k$, which is to select a code randomly
+with probabilities $\textrm{softmax}(\alpha_{j_n, k})$.
+
+Coder $j$'s accuracy on items of category $k$ is given by
+$\textrm{softmax}(\alpha_{j, k})_k$.  This is just the multivariate
+generalization of the notions of sensitivity and specificity in binary
+diagnostic tests, which represent accuracy on positive and negative
+subjects respectively.  Bias is represented by the off-diagonal entries
+$\textrm{softmax}(\alpha_{j, k})_{k'}$.   Overall accuracy depends on
+the overall prevalence of categories, which is in turn determined by
+the distribution of predictors.
+
+\subsubsection*{Item component: Difficulty and bias}
+
+The first item-level effect we consider is an item difficulty and bias
+parameter, which is an $I \times K$ matrix $\beta$.  Codes are then
+generated by adding the effects,
+\[
+  y_n \sim \textrm{categorical}(\textrm{softmax}(\alpha_{j_n,\,
+    z_{i[n]}} + \beta_{i_n})).
+\]
+As any component of $\beta_i \rightarrow \rightarrow -\infty$, it
+makes the item more difficult to correctly classify until it
+approaches zero classification accuracy.  As any component of $\beta_i
+\rightarrow \infty$, it makes the item easier to correctly
+classifiable until it approaches perfect classification accuracy.
+
+We recover the item-response theory one-parameter logistic (IRT 1PL)
+model when $K = 2$, the true categories of the items $z$ are
+observed, and the annotator effects are symmetric with constant diagonal.
+
+\subsubsection*{Item component: Discrimination}
+
+The second item-level effect we consider is item discriminativeness,
+which represents the degree to which the difference between the coder
+and item effects is accentuated.  There is a scalar discrimination
+parameter $\delta_i \in (0, \infty)$ for each item $i \in \rng{I}$.
+Codes are then generated by multiplying this discrimination parameter,
+\[
+    y_n \sim \textrm{categorical}(\textrm{softmax}(\delta_{i_n} \cdot (\alpha_{j_n,\,
+    z_{i[n]}} + \beta_{i_n}))).
+\]
+The discrimination parameter controls how attenuated the resulting
+categorical distribution is. As 
+$\delta_{i_n} \rightarrow 0$, the resulting categorical distribution
+approaches uniformity. As $\delta_{i_n} \rightarrow \infty$, the
+categorical distribution concentrates on the outcome $k$ for which
+$\alpha_{j_n,\, z_{i[n]}} + \beta_{i_n}$ is largest. It is called
+``discrimination'' because the higher its value, the more the baseline
+item level response $\beta_{i_n}$ determines a hard threshold for
+$\alpha_{j_n,\, z_{i[n]}}$.
+
+\subsubsection*{Item component: Guessing}
+
+We can establish a baseline for guessing and interpolate it with the
+predicted accuracy.  For each item, we assume $\lambda_i \in (0, 1)$ is an
+item-level guessing rate and $\gamma_i$ is a $K$-vector of distributional
+parameters.  The code distribution is then
+\[
+  y_n \sim \textrm{categorical}(
+  \lambda_{i_n} \cdot \textrm{softmax}(\gamma_{i_n})
+  + (1 - \lambda_{i_n}) \cdot \textrm{softmax}(\delta_{i_n} \cdot (\alpha_{j_n,\,
+    z_{i[n]}} + \beta_{i_n}))).
+\]
+This is essentially a mixture with a $\lambda_{i_n}$ probability of
+guessing, with a guess distribution of
+$\textrm{categorical}(\textrm{softmax}(\gamma_{i_n}))$, and
+a $1 - \lambda_{i_n}$ probability of not guessing, with non-guess
+distribution given by the previous model.  
+
+This model may be simplified by having either or both of
+$\lambda_{i}$ and $\gamma_{i}$ not depend on the item $i$.
+
+As an alternative, there can also be coder-level guessing, where each
+coder gets their own guessing distribution.
+
+% \subsubsection*{Component 4: Response confusibility}
+
+% Responses may be confusible.  For example, categories $k$ and $k'$
+% might be easily confusible for a tagging problem or for a specific
+% item.  Not clear how to model this!
+
+
+
+\subsection*{Identifying the model}
+
+These models present both additive and multiplicative
+non-identifiabilities as stated without additional constraints on the
+parameter values.
+
+\subsubsection*{Identifying item difficulties}
+
+Introducing the item response parameter $\beta$ in
+$\alpha_{j_n, z_{i[n]}} + \beta_{i_n}$ leads to an additive
+non-identifiability.  Adding a constant to all $\alpha_{j,k}$ and
+subtracting the same constant from all $\beta_{i}$ leaves
+$\alpha_{j_n, z_{i[n]}} + \beta_{i_n}$ invariant.
+
+One standard identification strategy is to pin one of the $\beta_{i, k}$
+values to zero, conventionally the last, so that
+\[
+  \beta_{i, K} = 0.
+\]
+Then the values of $\beta_{i, k}$ for $k < K$ are now determined
+relative to $\beta_{i, K} = 0$. In this situation, each $\beta_{i, k}$
+can be interpreted as the log odds of category $k$ relative to
+category $K$.
+
+A second identification strategy is to constrain the sum of the items,
+so that, for example, $\textrm{sum}(\beta_{i, \rng{K}}) = 0.$  This
+is a more symmetric approach, and still results in $K - 1$ degrees of
+freedom in the sense that if we let $\beta_{i, \rng{K-1}}$ range
+freely, then we have
+\[
+  \beta_{i, K} = -\textrm{sum}(\beta_{i, \rng{K-1}}).
+\]
+
+A third identification strategy is to simply accept the
+non-identifiability of the model in the likelihood and identify the
+model in the prior.  For example, if each $\beta_{i, k}$ is given a
+prior centered at zero, then the prior will provide a degree of soft
+identification.  It won't enforce an exact sum-to-zero constraint, but
+if it is normal, the density of the recentered parameter vector
+$\beta_{i, \rng{K}} - \frac{1}{M} \cdot \textrm{mean}(\beta_{i,
+  \rng{K}})$ will be greater than or equal to that of $\beta_{i,
+  \rng{K}}$, with equality only when the vectors are equal.
+
+
+\subsubsection*{Identifying an intercept}
+
+It can be convenient to also assume that the the rows of the coder
+response matrices, $\alpha_{j, k, \rng{K}}$ sum to zero.  This allows
+the term
+$\alpha_{j_n, z_{i[n]}} - \beta_{i_n}$ to be replaced with
+$\mu_{z_{i[n]}} + \alpha_{j_n, z_{i[n]}} - \beta_{i_n}$, where $\mu$ is a global
+intercept vector which will represent a baseline response.
+For instance, it'd represent baseline sensitivity
+and specificity for a binary classification problem, which is then
+modified by adding in item and coder-level effects.
+
+
+\subsubsection*{Reductions and expansions}
+
+
+\textit{Binary classification}: When $K = 2$, the result is a binary
+classification problem.  With only two categories, the sum-to-zero
+effect requires the response matrix $\alpha_j$ for coder $j$ to
+satisfy $\alpha_{j, 1, 1} = -\alpha_{j, 1, 2}$ and
+satisfy $\alpha_{j, 2, 1} = -\alpha_{j, 2, 2}$, so that it is of the form
+\[
+  \alpha_j =
+  \begin{bmatrix}
+    \alpha_{j, 1, 1} & -\alpha_{j, 1, 1}
+    \\
+    \alpha_{j, 2, 1} & -\alpha_{j, 2, 1}
+  \end{bmatrix}.
+\]
+In this situation, we can instead simplify to a logistic regression
+representation where we set $\alpha_{j, k, 2} = 0$ rather than
+$alpha_{j, k, 2} = -\alpha_{j, k, 1}$.
+
+\textit{Dawid and Skene's model} arises from including coder-level
+response parameters $\alpha$ and restricting the predictor matrix $x$
+to a single column of ones. It varies in that it uses a log-odds
+parameterization rather than a beta-binomial.
+
+The \textit{IRT 1PL model} arises from including coder-level response
+parameters $\alpha$ and item-difficulty parameters $\beta$, requires
+$\alpha$
+
+
+
+
+\subsection{Priors}
+
+Softmax is many to one becuase $v$ and $v + c$ map to the
+same simplex for any constant $c$.  On the other hand, if $\theta$ is
+a simplex, then 
+\[
+  \theta = \textrm{softmax}(\log \theta).
+\]
+Rather than identifying the coefficients by setting
+$\beta_{1, \rng{P}} = 0$ as is traditionally done in multi-logit
+regression, we will take a more symmetric approach by supplying
+shrinkage-based priors.
+
+\end{document}
