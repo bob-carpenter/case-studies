@@ -30,13 +30,16 @@ parameters {
   real<lower=0, upper=1> prev;
   vector[J] spec;
   vector<lower=-spec>[J] sens;
-  vector[I] diff;
+  real<lower=0> sigma;
+  vector<multiplier=sigma>[I] diff;
+  // vector[I] diff;
 }
 model {
   prev ~ uniform(0, 1);
   sens ~ normal(0, 3);
   spec ~ normal(0, 3);
-  diff ~ normal(0, 1);
+  sigma ~ lognormal(0, 1);
+  diff ~ normal(0, 1.5);
   vector[I] lp_pos = rep_vector(log(prev), I);
   vector[I] lp_neg = rep_vector(log1m(prev), I);
   for (n in 1:N) {
