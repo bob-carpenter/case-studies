@@ -19,16 +19,18 @@ N = int(len(rater))
 data = { 'I': I, 'J': J, 'N': N,
             'item': item, 'rater': rater, 'rating': rating }
 init = { 'prev': 0.2,
+         'sigma': 1,             
          'sens': np.full(J, 2),
          'spec': np.full(J, 2),
          'diff': np.full(I, 0.0) }
 model = csp.CmdStanModel(stan_file = '../stan/revised-1pl.stan')
 sample = model.sample(data = data, show_console = True, refresh = 10,
-                          iter_warmup=200, iter_sampling=200,
-                          parallel_chains = 4,
-                          chains = 2, inits = init,
-                          seed = 92584)
+                          iter_warmup=1000, iter_sampling=1000,
+                          parallel_chains = 4, adapt_delta=0.9,
+                          chains = 4, inits = init,
+                          seed = 837689)
 
+# ACTUAL W DENTISTRY: [1880,1065,404,247,173,100]
 
 # ORIGINAL
 # y = df.pivot(index='item', columns='coder', values='response').to_numpy()
