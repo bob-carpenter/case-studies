@@ -2,7 +2,7 @@ data {
   int<lower=0> K;          // num covariates
 
   int<lower=0> N;          // num uncensored obs
-  vector[N] t;             // event time (non-strict decreasing)
+  vector[N] t;             // event time (strictly decreasing)
   matrix[N, K] x;          // covariates for uncensored obs
 
   int N_c;                 // num censored obs
