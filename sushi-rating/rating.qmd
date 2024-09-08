@@ -25,20 +25,6 @@ format:
     format-links: false
     embed-resources: true
     anchor-sections: true
-  pdf:
-    include-in-header:
-      - file: header.tex
-    mainfont: Palatino
-    number-sections: true
-    number-depth: 2
-    margin-bottom: 1in
-    fig-pos: "t!"
-    biblio-title: "References"
-    biblio-style: natbib
-    link-citations: true
-    link-bibliography: true
-    pdf-engine: xelatex
-    highlight-style: github
 bibliography: references.bib
 ---
 
