@@ -1,0 +1,260 @@
+---
+title: "Estimating *g* from Galileo's Water Clock"
+subtitle: "A scientific Bayesian inverse problem with Stan and CmdStanPy"
+author: "Case study"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: false
+    df-print: paged
+    fig-width: 7
+    fig-height: 4.5
+jupyter: python3
+---
+
+## The experiment as an inverse problem
+
+In the *Discorsi* (1638) Galileo timed a bronze ball rolling down a grooved
+inclined plane. Lacking a stopwatch, he measured elapsed time by **weighing the
+water** that drained from a vessel during each roll: the heavier the collected
+water, the longer the descent. By repeating the roll over marked fractions of
+the channel he established that distance grows with the *square* of time — the
+signature of constant acceleration.
+
+Here we turn Galileo's apparatus into a **Bayesian inverse problem**. The
+*forward model* maps an unknown physical parameter — the gravitational
+acceleration $g$ — to a predicted observation (a water mass). Given noisy
+measurements we *invert* the map to recover a posterior distribution over $g$,
+together with the unavoidable weighing noise $\sigma$.
+
+## The forward model
+
+### Mechanics of the rolling ball
+
+A homogeneous sphere of mass $m$ and radius $\varrho$ rolls without slipping
+down a straight channel inclined at angle $\theta$ to the horizontal. Combining
+the translational and rotational equations of motion, the acceleration along
+the incline is
+
+$$
+a \;=\; \frac{g\sin\theta}{1 + I/(m\varrho^{2})},
+$$
+
+where $I$ is the moment of inertia about the ball's centre. For a solid sphere
+$I = \tfrac{2}{5} m\varrho^{2}$, so the bracketed *rolling-inertia factor* is a
+pure number,
+
+$$
+\kappa \;=\; 1 + \frac{I}{m\varrho^{2}} \;=\; \frac{7}{5},
+\qquad\text{giving}\qquad
+a \;=\; \frac{g\sin\theta}{\kappa}.
+$$
+
+Starting from rest, the distance travelled obeys $d = \tfrac12 a t^{2}$, so the
+time to roll a distance $d$ is
+
+$$
+t(d) \;=\; \sqrt{\frac{2d}{a}} \;=\; \sqrt{\frac{2\kappa\,d}{g\sin\theta}}.
+$$
+
+### The water clock
+
+While the ball rolls, water escapes the clock at an (approximately) constant
+mass-flow rate $r$ (grams per second). The **collected water mass is the
+observable proxy for time**:
+
+$$
+w(d) \;=\; r\,t(d) \;=\; r\,\sqrt{\frac{2\kappa\,d}{g\sin\theta}}.
+$$
+
+This is our forward operator $\mathcal{F}_g : d \mapsto w$.
+
+### An identifiability remark {#sec-ident}
+
+Rewriting $w(d) = \dfrac{r}{\sqrt{g}}\sqrt{\dfrac{2\kappa d}{\sin\theta}}$ shows
+that $g$ and $r$ enter **only through the ratio $r/\sqrt{g}$**. With the flow
+rate unknown, the data constrain just the combination $r^{2}/g$, not $g$ alone.
+We therefore treat $r$ as **calibrated** — exactly as Galileo would have done by
+weighing the steady outflow over a measured interval — which makes $g$
+identifiable. The geometry $\theta$ and the constant $\kappa$ are likewise taken
+as known.
+
+## The statistical model
+
+We observe water masses $w_1,\dots,w_N$ at design distances $d_1,\dots,d_N$.
+Weighing introduces additive error, giving the sampling distribution
+
+$$
+w_i \;\sim\; \operatorname{Normal}\!\bigl(\mu_i,\;\sigma\bigr),
+\qquad
+\mu_i \;=\; r\,\sqrt{\frac{2\kappa\,d_i}{g\,\sin\theta}}.
+$$
+
+We complete the model with weakly-informative, positively-constrained priors
+
+$$
+g \;\sim\; \operatorname{Normal}^{+}(10,\,5),
+\qquad
+\sigma \;\sim\; \operatorname{Normal}^{+}(0,\,5),
+$$
+
+so that the prior on $g$ spans a generous range (its standard deviation of
+$5\,\mathrm{m\,s^{-2}}$ comfortably covers any plausible terrestrial value) and
+the data, rather than the prior, drive the posterior.
+
+## The Stan program
+
+The model below implements the forward operator and likelihood directly. We
+write it to `galileo.stan`, which CmdStanPy compiles in the next section.
+
+```{python}
+#| label: write-stan
+#| echo: true
+stan_code = r"""
+data {
+  int<lower=1> N;                    // number of rolls
+  vector<lower=0>[N] d;              // distance rolled along the incline (m)
+  vector<lower=0>[N] w;              // water mass collected (g)  -- the data
+  real<lower=0> r;                   // calibrated water flow rate (g / s)
+  real<lower=0> kappa;               // rolling-inertia factor (7/5 for a solid sphere)
+  real<lower=0, upper=1> sin_theta;  // sine of the incline angle
+}
+parameters {
+  real<lower=0> g;                   // gravitational acceleration (m / s^2)
+  real<lower=0> sigma;               // weighing noise (g)
+}
+model {
+  // Forward model: predicted water mass at each distance.
+  vector[N] mu = r * sqrt(2 * kappa * d / (g * sin_theta));
+
+  // Weakly-informative priors (positivity from the <lower=0> declarations).
+  g     ~ normal(10, 5);
+  sigma ~ normal(0, 5);
+
+  // Likelihood.
+  w ~ normal(mu, sigma);
+}
+"""
+
+with open("galileo.stan", "w") as f:
+    f.write(stan_code)
+```
+
+## Simulating the experiment
+
+We generate synthetic data from known "true" parameters so we can check that the
+inversion recovers them. In practice the `w` column would instead come from the
+laboratory scale.
+
+```{python}
+#| label: simulate
+#| warning: false
+#| message: false
+import numpy as np
+import pandas as pd
+import plotnine as pn
+from cmdstanpy import CmdStanModel
+
+rng = np.random.default_rng(2024)
+
+# --- "True" parameters (hidden from the model) -------------------------------
+g_true     = 9.81      # gravitational acceleration (m / s^2)
+sigma_true = 3.0       # weighing noise (g)
+
+# --- Known / calibrated experimental constants -------------------------------
+r          = 50.0      # water flow rate (g / s), calibrated separately
+kappa      = 7.0 / 5.0 # solid-sphere rolling-inertia factor
+sin_theta  = 0.10      # sine of the incline angle (~5.7 degrees)
+
+# --- Experimental design: marked distances, each rolled several times --------
+distances  = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+reps       = 5
+d          = np.repeat(distances, reps)
+N          = d.size
+
+# --- Forward simulation of the water-clock observations ----------------------
+mu = r * np.sqrt(2 * kappa * d / (g_true * sin_theta))
+w  = mu + rng.normal(0.0, sigma_true, size=N)
+
+sim = pd.DataFrame({"d": d, "w": w, "mu": mu})
+```
+
+The simulated measurements scatter about the $w \propto \sqrt{d}$ forward curve:
+
+```{python}
+#| label: fig-data
+#| fig-cap: "Simulated water-clock measurements (points) against the noise-free forward model (curve)."
+#| warning: false
+(
+    pn.ggplot(sim, pn.aes("d", "w"))
+    + pn.geom_line(pn.aes(y="mu"), color="#1f6feb", size=1)
+    + pn.geom_point(color="#24292f", fill="#ffd33d", size=3, alpha=0.85)
+    + pn.labs(
+        x="distance rolled  (m)",
+        y="water mass collected  (g)",
+        title="Galileo's water clock: simulated observations",
+    )
+    + pn.theme_minimal()
+)
+```
+
+## Fitting the inverse problem
+
+We assemble the data dictionary, compile the Stan program, and draw posterior
+samples with the no-U-turn sampler.
+
+```{python}
+#| label: fit
+#| warning: false
+#| message: false
+stan_data = {
+    "N": N,
+    "d": d.tolist(),
+    "w": w.tolist(),
+    "r": r,
+    "kappa": kappa,
+    "sin_theta": sin_theta,
+}
+
+model = CmdStanModel(stan_file="galileo.stan")
+
+fit = model.sample(
+    data=stan_data,
+    chains=4,
+    parallel_chains=4,
+    iter_warmup=1000,
+    iter_sampling=1000,
+    seed=2024,
+    show_progress=False,
+)
+```
+
+The posterior summary — the deliverable for this stage — reports the marginal
+posterior for $g$ and $\sigma$ alongside MCMC diagnostics (`R_hat`, effective
+sample sizes). The posterior mean for `g` should sit close to the true
+$9.81\ \mathrm{m\,s^{-2}}$.
+
+```{python}
+#| label: summary
+fit.summary()
+```
+
+## Where this goes next
+
+This scaffold isolates the core inversion. Natural extensions, each a short
+addition to the Stan program and a `plotnine` figure, include: posterior
+predictive checks via a `generated quantities` block of `w_rep`; propagating
+calibration uncertainty by promoting $r$ to a parameter with an informative
+prior (recall the @sec-ident degeneracy); a multiplicative (log-normal) noise
+model; and jointly inferring the incline angle $\theta$ from auxiliary
+measurements.
+
+::: {.callout-note}
+**Prerequisites.** Render with `quarto render galileo.qmd`. You will need
+`pip install cmdstanpy plotnine jupyter`, a one-time CmdStan install
+(`python -c "import cmdstanpy; cmdstanpy.install_cmdstan()"`), and a working
+C++ toolchain.
+:::

@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.8.25">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Case study">
+<meta name="dcterms.date" content="2026-06-16">
+
+<title>Estimating g from Galileo’s Water Clock</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="galileo_files/libs/clipboard/clipboard.min.js"></script>
+<script src="galileo_files/libs/quarto-html/quarto.js" type="module"></script>
+<script src="galileo_files/libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="galileo_files/libs/quarto-html/axe/axe-check.js" type="module"></script>
+<script src="galileo_files/libs/quarto-html/popper.min.js"></script>
+<script src="galileo_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="galileo_files/libs/quarto-html/anchor.min.js"></script>
+<link href="galileo_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="galileo_files/libs/quarto-html/quarto-syntax-highlighting-7b89279ff1a6dce999919e0e67d4d9ec.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="galileo_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="galileo_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="galileo_files/libs/bootstrap/bootstrap-d6a003b94517c951b2d65075d42fb01b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN" && texText && texText.data) {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+</head>
+
+<body class="quarto-light">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+<div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+  <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Table of contents</h2>
+   
+  <ul>
+  <li><a href="#the-experiment-as-an-inverse-problem" id="toc-the-experiment-as-an-inverse-problem" class="nav-link active" data-scroll-target="#the-experiment-as-an-inverse-problem"><span class="header-section-number">1</span> The experiment as an inverse problem</a></li>
+  <li><a href="#the-forward-model" id="toc-the-forward-model" class="nav-link" data-scroll-target="#the-forward-model"><span class="header-section-number">2</span> The forward model</a>
+  <ul class="collapse">
+  <li><a href="#mechanics-of-the-rolling-ball" id="toc-mechanics-of-the-rolling-ball" class="nav-link" data-scroll-target="#mechanics-of-the-rolling-ball"><span class="header-section-number">2.1</span> Mechanics of the rolling ball</a></li>
+  <li><a href="#the-water-clock" id="toc-the-water-clock" class="nav-link" data-scroll-target="#the-water-clock"><span class="header-section-number">2.2</span> The water clock</a></li>
+  <li><a href="#sec-ident" id="toc-sec-ident" class="nav-link" data-scroll-target="#sec-ident"><span class="header-section-number">2.3</span> An identifiability remark</a></li>
+  </ul></li>
+  <li><a href="#the-statistical-model" id="toc-the-statistical-model" class="nav-link" data-scroll-target="#the-statistical-model"><span class="header-section-number">3</span> The statistical model</a></li>
+  <li><a href="#the-stan-program" id="toc-the-stan-program" class="nav-link" data-scroll-target="#the-stan-program"><span class="header-section-number">4</span> The Stan program</a></li>
+  <li><a href="#simulating-the-experiment" id="toc-simulating-the-experiment" class="nav-link" data-scroll-target="#simulating-the-experiment"><span class="header-section-number">5</span> Simulating the experiment</a></li>
+  <li><a href="#fitting-the-inverse-problem" id="toc-fitting-the-inverse-problem" class="nav-link" data-scroll-target="#fitting-the-inverse-problem"><span class="header-section-number">6</span> Fitting the inverse problem</a></li>
+  <li><a href="#where-this-goes-next" id="toc-where-this-goes-next" class="nav-link" data-scroll-target="#where-this-goes-next"><span class="header-section-number">7</span> Where this goes next</a></li>
+  </ul>
+</nav>
+</div>
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Estimating <em>g</em> from Galileo’s Water Clock</h1>
+<p class="subtitle lead">A scientific Bayesian inverse problem with Stan and CmdStanPy</p>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Case study </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">June 16, 2026</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="the-experiment-as-an-inverse-problem" class="level2" data-number="1">
+<h2 data-number="1" class="anchored" data-anchor-id="the-experiment-as-an-inverse-problem"><span class="header-section-number">1</span> The experiment as an inverse problem</h2>
+<p>In the <em>Discorsi</em> (1638) Galileo timed a bronze ball rolling down a grooved inclined plane. Lacking a stopwatch, he measured elapsed time by <strong>weighing the water</strong> that drained from a vessel during each roll: the heavier the collected water, the longer the descent. By repeating the roll over marked fractions of the channel he established that distance grows with the <em>square</em> of time — the signature of constant acceleration.</p>
+<p>Here we turn Galileo’s apparatus into a <strong>Bayesian inverse problem</strong>. The <em>forward model</em> maps an unknown physical parameter — the gravitational acceleration <span class="math inline">\(g\)</span> — to a predicted observation (a water mass). Given noisy measurements we <em>invert</em> the map to recover a posterior distribution over <span class="math inline">\(g\)</span>, together with the unavoidable weighing noise <span class="math inline">\(\sigma\)</span>.</p>
+</section>
+<section id="the-forward-model" class="level2" data-number="2">
+<h2 data-number="2" class="anchored" data-anchor-id="the-forward-model"><span class="header-section-number">2</span> The forward model</h2>
+<section id="mechanics-of-the-rolling-ball" class="level3" data-number="2.1">
+<h3 data-number="2.1" class="anchored" data-anchor-id="mechanics-of-the-rolling-ball"><span class="header-section-number">2.1</span> Mechanics of the rolling ball</h3>
+<p>A homogeneous sphere of mass <span class="math inline">\(m\)</span> and radius <span class="math inline">\(\varrho\)</span> rolls without slipping down a straight channel inclined at angle <span class="math inline">\(\theta\)</span> to the horizontal. Combining the translational and rotational equations of motion, the acceleration along the incline is</p>
+<p><span class="math display">\[
+a \;=\; \frac{g\sin\theta}{1 + I/(m\varrho^{2})},
+\]</span></p>
+<p>where <span class="math inline">\(I\)</span> is the moment of inertia about the ball’s centre. For a solid sphere <span class="math inline">\(I = \tfrac{2}{5} m\varrho^{2}\)</span>, so the bracketed <em>rolling-inertia factor</em> is a pure number,</p>
+<p><span class="math display">\[
+\kappa \;=\; 1 + \frac{I}{m\varrho^{2}} \;=\; \frac{7}{5},
+\qquad\text{giving}\qquad
+a \;=\; \frac{g\sin\theta}{\kappa}.
+\]</span></p>
+<p>Starting from rest, the distance travelled obeys <span class="math inline">\(d = \tfrac12 a t^{2}\)</span>, so the time to roll a distance <span class="math inline">\(d\)</span> is</p>
+<p><span class="math display">\[
+t(d) \;=\; \sqrt{\frac{2d}{a}} \;=\; \sqrt{\frac{2\kappa\,d}{g\sin\theta}}.
+\]</span></p>
+</section>
+<section id="the-water-clock" class="level3" data-number="2.2">
+<h3 data-number="2.2" class="anchored" data-anchor-id="the-water-clock"><span class="header-section-number">2.2</span> The water clock</h3>
+<p>While the ball rolls, water escapes the clock at an (approximately) constant mass-flow rate <span class="math inline">\(r\)</span> (grams per second). The <strong>collected water mass is the observable proxy for time</strong>:</p>
+<p><span class="math display">\[
+w(d) \;=\; r\,t(d) \;=\; r\,\sqrt{\frac{2\kappa\,d}{g\sin\theta}}.
+\]</span></p>
+<p>This is our forward operator <span class="math inline">\(\mathcal{F}_g : d \mapsto w\)</span>.</p>
+</section>
+<section id="sec-ident" class="level3" data-number="2.3">
+<h3 data-number="2.3" class="anchored" data-anchor-id="sec-ident"><span class="header-section-number">2.3</span> An identifiability remark</h3>
+<p>Rewriting <span class="math inline">\(w(d) = \dfrac{r}{\sqrt{g}}\sqrt{\dfrac{2\kappa d}{\sin\theta}}\)</span> shows that <span class="math inline">\(g\)</span> and <span class="math inline">\(r\)</span> enter <strong>only through the ratio <span class="math inline">\(r/\sqrt{g}\)</span></strong>. With the flow rate unknown, the data constrain just the combination <span class="math inline">\(r^{2}/g\)</span>, not <span class="math inline">\(g\)</span> alone. We therefore treat <span class="math inline">\(r\)</span> as <strong>calibrated</strong> — exactly as Galileo would have done by weighing the steady outflow over a measured interval — which makes <span class="math inline">\(g\)</span> identifiable. The geometry <span class="math inline">\(\theta\)</span> and the constant <span class="math inline">\(\kappa\)</span> are likewise taken as known.</p>
+</section>
+</section>
+<section id="the-statistical-model" class="level2" data-number="3">
+<h2 data-number="3" class="anchored" data-anchor-id="the-statistical-model"><span class="header-section-number">3</span> The statistical model</h2>
+<p>We observe water masses <span class="math inline">\(w_1,\dots,w_N\)</span> at design distances <span class="math inline">\(d_1,\dots,d_N\)</span>. Weighing introduces additive error, giving the sampling distribution</p>
+<p><span class="math display">\[
+w_i \;\sim\; \operatorname{Normal}\!\bigl(\mu_i,\;\sigma\bigr),
+\qquad
+\mu_i \;=\; r\,\sqrt{\frac{2\kappa\,d_i}{g\,\sin\theta}}.
+\]</span></p>
+<p>We complete the model with weakly-informative, positively-constrained priors</p>
+<p><span class="math display">\[
+g \;\sim\; \operatorname{Normal}^{+}(10,\,5),
+\qquad
+\sigma \;\sim\; \operatorname{Normal}^{+}(0,\,5),
+\]</span></p>
+<p>so that the prior on <span class="math inline">\(g\)</span> spans a generous range (its standard deviation of <span class="math inline">\(5\,\mathrm{m\,s^{-2}}\)</span> comfortably covers any plausible terrestrial value) and the data, rather than the prior, drive the posterior.</p>
+</section>
+<section id="the-stan-program" class="level2" data-number="4">
+<h2 data-number="4" class="anchored" data-anchor-id="the-stan-program"><span class="header-section-number">4</span> The Stan program</h2>
+<p>The model below implements the forward operator and likelihood directly. We write it to <code>galileo.stan</code>, which CmdStanPy compiles in the next section.</p>
+<div id="write-stan" class="cell" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>stan_code <span class="op">=</span> <span class="vs">r"""</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="vs">data {</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="vs">  int&lt;lower=1&gt; N;                    // number of rolls</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="vs">  vector&lt;lower=0&gt;</span><span class="pp">[N]</span><span class="vs"> d;              // distance rolled along the incline </span><span class="kw">(</span><span class="vs">m</span><span class="kw">)</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="vs">  vector&lt;lower=0&gt;</span><span class="pp">[N]</span><span class="vs"> w;              // water mass collected </span><span class="kw">(</span><span class="vs">g</span><span class="kw">)</span><span class="vs">  -- the data</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="vs">  real&lt;lower=0&gt; r;                   // calibrated water flow rate </span><span class="kw">(</span><span class="vs">g / s</span><span class="kw">)</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="vs">  real&lt;lower=0&gt; kappa;               // rolling-inertia factor </span><span class="kw">(</span><span class="vs">7/5 for a solid sphere</span><span class="kw">)</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="vs">  real&lt;lower=0, upper=1&gt; sin_theta;  // sine of the incline angle</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="vs">}</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="vs">parameters {</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="vs">  real&lt;lower=0&gt; g;                   // gravitational acceleration </span><span class="kw">(</span><span class="vs">m / s</span><span class="dv">^</span><span class="vs">2</span><span class="kw">)</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="vs">  real&lt;lower=0&gt; sigma;               // weighing noise </span><span class="kw">(</span><span class="vs">g</span><span class="kw">)</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="vs">}</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="vs">model {</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="vs">  // Forward model: predicted water mass at each distance</span><span class="dv">.</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="vs">  vector</span><span class="pp">[N]</span><span class="vs"> mu = r </span><span class="op">*</span><span class="vs"> sqrt</span><span class="kw">(</span><span class="vs">2 </span><span class="op">*</span><span class="vs"> kappa </span><span class="op">*</span><span class="vs"> d / </span><span class="kw">(</span><span class="vs">g </span><span class="op">*</span><span class="vs"> sin_theta</span><span class="kw">))</span><span class="vs">;</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a><span class="vs">  // Weakly-informative priors </span><span class="kw">(</span><span class="vs">positivity from the &lt;lower=0&gt; declarations</span><span class="kw">)</span><span class="dv">.</span></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a><span class="vs">  g     ~ normal</span><span class="kw">(</span><span class="vs">10, 5</span><span class="kw">)</span><span class="vs">;</span></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a><span class="vs">  sigma ~ normal</span><span class="kw">(</span><span class="vs">0, 5</span><span class="kw">)</span><span class="vs">;</span></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a><span class="vs">  // Likelihood</span><span class="dv">.</span></span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a><span class="vs">  w ~ normal</span><span class="kw">(</span><span class="vs">mu, sigma</span><span class="kw">)</span><span class="vs">;</span></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a><span class="vs">}</span></span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a><span class="vs">"""</span></span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> <span class="bu">open</span>(<span class="st">"galileo.stan"</span>, <span class="st">"w"</span>) <span class="im">as</span> f:</span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>    f.write(stan_code)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="simulating-the-experiment" class="level2" data-number="5">
+<h2 data-number="5" class="anchored" data-anchor-id="simulating-the-experiment"><span class="header-section-number">5</span> Simulating the experiment</h2>
+<p>We generate synthetic data from known “true” parameters so we can check that the inversion recovers them. In practice the <code>w</code> column would instead come from the laboratory scale.</p>
+<div id="simulate" class="cell" data-message="false" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> numpy <span class="im">as</span> np</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> plotnine <span class="im">as</span> pn</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> cmdstanpy <span class="im">import</span> CmdStanModel</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>rng <span class="op">=</span> np.random.default_rng(<span class="dv">2024</span>)</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="co"># --- "True" parameters (hidden from the model) -------------------------------</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>g_true     <span class="op">=</span> <span class="fl">9.81</span>      <span class="co"># gravitational acceleration (m / s^2)</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>sigma_true <span class="op">=</span> <span class="fl">3.0</span>       <span class="co"># weighing noise (g)</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="co"># --- Known / calibrated experimental constants -------------------------------</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>r          <span class="op">=</span> <span class="fl">50.0</span>      <span class="co"># water flow rate (g / s), calibrated separately</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>kappa      <span class="op">=</span> <span class="fl">7.0</span> <span class="op">/</span> <span class="fl">5.0</span> <span class="co"># solid-sphere rolling-inertia factor</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>sin_theta  <span class="op">=</span> <span class="fl">0.10</span>      <span class="co"># sine of the incline angle (~5.7 degrees)</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a><span class="co"># --- Experimental design: marked distances, each rolled several times --------</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>distances  <span class="op">=</span> np.array([<span class="fl">1.0</span>, <span class="fl">2.0</span>, <span class="fl">3.0</span>, <span class="fl">4.0</span>, <span class="fl">5.0</span>])</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>reps       <span class="op">=</span> <span class="dv">5</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>d          <span class="op">=</span> np.repeat(distances, reps)</span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>N          <span class="op">=</span> d.size</span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a><span class="co"># --- Forward simulation of the water-clock observations ----------------------</span></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>mu <span class="op">=</span> r <span class="op">*</span> np.sqrt(<span class="dv">2</span> <span class="op">*</span> kappa <span class="op">*</span> d <span class="op">/</span> (g_true <span class="op">*</span> sin_theta))</span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>w  <span class="op">=</span> mu <span class="op">+</span> rng.normal(<span class="fl">0.0</span>, sigma_true, size<span class="op">=</span>N)</span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a>sim <span class="op">=</span> pd.DataFrame({<span class="st">"d"</span>: d, <span class="st">"w"</span>: w, <span class="st">"mu"</span>: mu})</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>The simulated measurements scatter about the <span class="math inline">\(w \propto \sqrt{d}\)</span> forward curve:</p>
+<div id="cell-fig-data" class="cell" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>(</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    pn.ggplot(sim, pn.aes(<span class="st">"d"</span>, <span class="st">"w"</span>))</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> pn.geom_line(pn.aes(y<span class="op">=</span><span class="st">"mu"</span>), color<span class="op">=</span><span class="st">"#1f6feb"</span>, size<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> pn.geom_point(color<span class="op">=</span><span class="st">"#24292f"</span>, fill<span class="op">=</span><span class="st">"#ffd33d"</span>, size<span class="op">=</span><span class="dv">3</span>, alpha<span class="op">=</span><span class="fl">0.85</span>)</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> pn.labs(</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>        x<span class="op">=</span><span class="st">"distance rolled  (m)"</span>,</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>        y<span class="op">=</span><span class="st">"water mass collected  (g)"</span>,</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>        title<span class="op">=</span><span class="st">"Galileo's water clock: simulated observations"</span>,</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    <span class="op">+</span> pn.theme_minimal()</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display">
+<div id="fig-data" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-data-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="galileo_files/figure-html/fig-data-output-1.png" width="640" height="480" class="figure-img">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-data-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;1: Simulated water-clock measurements (points) against the noise-free forward model (curve).
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="fitting-the-inverse-problem" class="level2" data-number="6">
+<h2 data-number="6" class="anchored" data-anchor-id="fitting-the-inverse-problem"><span class="header-section-number">6</span> Fitting the inverse problem</h2>
+<p>We assemble the data dictionary, compile the Stan program, and draw posterior samples with the no-U-turn sampler.</p>
+<div id="fit" class="cell" data-message="false" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>stan_data <span class="op">=</span> {</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"N"</span>: N,</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"d"</span>: d.tolist(),</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"w"</span>: w.tolist(),</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"r"</span>: r,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"kappa"</span>: kappa,</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"sin_theta"</span>: sin_theta,</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> CmdStanModel(stan_file<span class="op">=</span><span class="st">"galileo.stan"</span>)</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>fit <span class="op">=</span> model.sample(</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    data<span class="op">=</span>stan_data,</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>    chains<span class="op">=</span><span class="dv">4</span>,</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>    parallel_chains<span class="op">=</span><span class="dv">4</span>,</span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>    iter_warmup<span class="op">=</span><span class="dv">1000</span>,</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>    iter_sampling<span class="op">=</span><span class="dv">1000</span>,</span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="dv">2024</span>,</span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>    show_progress<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>The posterior summary — the deliverable for this stage — reports the marginal posterior for <span class="math inline">\(g\)</span> and <span class="math inline">\(\sigma\)</span> alongside MCMC diagnostics (<code>R_hat</code>, effective sample sizes). The posterior mean for <code>g</code> should sit close to the true <span class="math inline">\(9.81\ \mathrm{m\,s^{-2}}\)</span>.</p>
+<div id="cell-summary" class="cell" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>fit.summary()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="summary" class="cell-output cell-output-display" data-execution_count="5">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">Mean</th>
+<th data-quarto-table-cell-role="th">MCSE</th>
+<th data-quarto-table-cell-role="th">StdDev</th>
+<th data-quarto-table-cell-role="th">MAD</th>
+<th data-quarto-table-cell-role="th">5%</th>
+<th data-quarto-table-cell-role="th">50%</th>
+<th data-quarto-table-cell-role="th">95%</th>
+<th data-quarto-table-cell-role="th">ESS_bulk</th>
+<th data-quarto-table-cell-role="th">ESS_tail</th>
+<th data-quarto-table-cell-role="th">ESS_bulk/s</th>
+<th data-quarto-table-cell-role="th">R_hat</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">lp__</th>
+<td>-38.23850</td>
+<td>0.025380</td>
+<td>1.033510</td>
+<td>0.758354</td>
+<td>-40.28640</td>
+<td>-37.92610</td>
+<td>-37.24740</td>
+<td>1770.70</td>
+<td>2219.25</td>
+<td>36889.7</td>
+<td>1.00163</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">g</th>
+<td>9.83438</td>
+<td>0.001801</td>
+<td>0.089134</td>
+<td>0.087850</td>
+<td>9.68823</td>
+<td>9.83327</td>
+<td>9.98624</td>
+<td>2473.11</td>
+<td>2118.62</td>
+<td>51523.1</td>
+<td>1.00197</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">sigma</th>
+<td>3.27127</td>
+<td>0.010146</td>
+<td>0.498258</td>
+<td>0.484397</td>
+<td>2.56898</td>
+<td>3.20371</td>
+<td>4.16179</td>
+<td>2556.25</td>
+<td>2558.40</td>
+<td>53255.3</td>
+<td>1.00076</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+</section>
+<section id="where-this-goes-next" class="level2" data-number="7">
+<h2 data-number="7" class="anchored" data-anchor-id="where-this-goes-next"><span class="header-section-number">7</span> Where this goes next</h2>
+<p>This scaffold isolates the core inversion. Natural extensions, each a short addition to the Stan program and a <code>plotnine</code> figure, include: posterior predictive checks via a <code>generated quantities</code> block of <code>w_rep</code>; propagating calibration uncertainty by promoting <span class="math inline">\(r\)</span> to a parameter with an informative prior (recall the <a href="#sec-ident" class="quarto-xref">Section&nbsp;2.3</a> degeneracy); a multiplicative (log-normal) noise model; and jointly inferring the incline angle <span class="math inline">\(\theta\)</span> from auxiliary measurements.</p>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Note
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><strong>Prerequisites.</strong> Render with <code>quarto render galileo.qmd</code>. You will need <code>pip install cmdstanpy plotnine jupyter</code>, a one-time CmdStan install (<code>python -c "import cmdstanpy; cmdstanpy.install_cmdstan()"</code>), and a working C++ toolchain.</p>
+</div>
+</div>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>
