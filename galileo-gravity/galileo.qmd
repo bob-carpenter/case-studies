@@ -5,6 +5,7 @@ author: "Case study"
 date: today
 format:
   html:
+    embed-resources: true
     toc: true
     toc-depth: 3
     number-sections: true
